@@ -29,17 +29,21 @@ Preferred: use Discord Portal OAuth2 URL Generator.
 Scopes:
 - `bot`
 
-Minimal bot permissions:
-- View Channels
-- Send Messages
-- Send Messages in Threads
-- Read Message History
+Before generating an invite URL, **ask which permission profile they want**. Do not assume `minimal` unless they explicitly choose it (or they say they don’t care and you default to least-privilege).
+
+Permission profiles (offer these options explicitly):
+- `minimal` (recommended): View Channels, Send Messages, Send Messages in Threads, Read Message History
+- `threads`: minimal + create/manage threads
+- `moderator`: broad ops (manage channels/threads/messages/webhooks; not full admin)
+- `admin`: `Administrator` permission (high risk; only use on a private server you control)
+
+If they pick `admin`, require an explicit confirmation. Keep the warning to 1-2 short sentences that end with a period (avoid trailing clauses that can get clipped in UI). Example: "Admin grants full server control. Only use on a private server you control. Proceed?"
 
 Optionally generate an invite URL via repo script:
 
 ```bash
-pnpm discord:invite-url -- --client-id <CLIENT_ID>
-pnpm discord:invite-url -- --client-id <CLIENT_ID> --guild-id <GUILD_ID> --disable-guild-select 1
+pnpm discord:invite-url -- --client-id <CLIENT_ID> --profile minimal
+pnpm discord:invite-url -- --client-id <CLIENT_ID> --profile minimal --guild-id <GUILD_ID> --disable-guild-select 1
 ```
 
 Permission options (recommended to pick explicitly):
@@ -75,8 +79,17 @@ Note: Discord does not expose the same full-text “search like the client” vi
 - `DISCOCLAW_DATA_DIR=...` (optional; content defaults under this)
 
 Validation:
-- `pnpm dev`
+- Prefer `pnpm discord:smoke-test` (exits 0 after "Discord bot ready") to validate the token/auth without long-running processes/timeouts.
+- If they want to confirm the bot is actually in their server, ask for the server (guild) ID and run:
+  - `pnpm discord:smoke-test -- --guild-id <GUILD_ID>`
+- Then `pnpm dev` for the real run.
 - Confirm it responds only in allowlisted contexts.
+
+Threads:
+- If they want the bot to reliably reply inside threads, set `DISCORD_AUTO_JOIN_THREADS=1`.
+- Private threads still require explicitly adding the bot to the thread.
+- If they want to join all active public threads in a server, run:
+  - `pnpm discord:join-threads -- --guild-id <GUILD_ID> --apply 1`
 
 ## Common Failures
 

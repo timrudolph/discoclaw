@@ -25,6 +25,9 @@ export type BotParams = {
   discordChannelContext?: DiscordChannelContext;
   requireChannelContext: boolean;
   autoIndexChannelContext: boolean;
+  // Best-effort: join threads so the bot can respond inside them.
+  // Note: private threads still require the bot to be added to the thread.
+  autoJoinThreads: boolean;
   runtime: RuntimeAdapter;
   sessionManager: SessionManager;
   workspaceCwd: string;
@@ -176,6 +179,22 @@ export function createMessageCreateHandler(params: Omit<BotParams, 'token'>, que
 
     await queue.run(sessionKey, async () => {
       const sessionId = await params.sessionManager.getOrCreate(sessionKey);
+
+      // If the message is in a thread, join it before replying so sends don't fail.
+      if (params.autoJoinThreads && isThread) {
+        const th: any = msg.channel as any;
+        const joinable = typeof th?.joinable === 'boolean' ? th.joinable : true;
+        const joined = typeof th?.joined === 'boolean' ? th.joined : false;
+        if (joinable && !joined && typeof th?.join === 'function') {
+          try {
+            await th.join();
+            params.log?.info({ threadId: String(th.id ?? ''), parentId: String(th.parentId ?? '') }, 'discord:thread joined');
+          } catch (err) {
+            params.log?.warn({ err, threadId: String(th?.id ?? '') }, 'discord:thread failed to join');
+          }
+        }
+      }
+
       const reply = await msg.reply('...');
 
       const cwd = params.useGroupDirCwd
@@ -287,6 +306,23 @@ export async function startDiscordBot(params: BotParams) {
 
   const queue = new KeyedQueue();
   client.on('messageCreate', createMessageCreateHandler(params, queue));
+
+  if (params.autoJoinThreads) {
+    client.on('threadCreate', async (thread: any) => {
+      const joinable = typeof thread?.joinable === 'boolean' ? thread.joinable : true;
+      const joined = typeof thread?.joined === 'boolean' ? thread.joined : false;
+      if (!joinable || joined || typeof thread?.join !== 'function') return;
+      try {
+        await thread.join();
+        params.log?.info(
+          { threadId: String(thread.id ?? ''), parentId: String(thread.parentId ?? '') },
+          'discord:thread joined (threadCreate)',
+        );
+      } catch (err) {
+        params.log?.warn({ err, threadId: String(thread?.id ?? '') }, 'discord:thread failed to join (threadCreate)');
+      }
+    });
+  }
 
   await client.login(params.token);
   return client;

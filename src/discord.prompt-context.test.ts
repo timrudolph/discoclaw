@@ -57,6 +57,7 @@ describe('prompt includes correct context file paths', () => {
       runtimeTimeoutMs: 1000,
       requireChannelContext: true,
       autoIndexChannelContext: false,
+      autoJoinThreads: false,
       discordChannelContext: discordChannelContext as any,
     }, queue);
 
@@ -104,6 +105,7 @@ describe('prompt includes correct context file paths', () => {
       runtimeTimeoutMs: 1000,
       requireChannelContext: true,
       autoIndexChannelContext: false,
+      autoJoinThreads: false,
       discordChannelContext: discordChannelContext as any,
     }, queue);
 
@@ -151,6 +153,7 @@ describe('prompt includes correct context file paths', () => {
       runtimeTimeoutMs: 1000,
       requireChannelContext: true,
       autoIndexChannelContext: false,
+      autoJoinThreads: false,
       discordChannelContext: discordChannelContext as any,
     }, queue);
 
@@ -160,4 +163,3 @@ describe('prompt includes correct context file paths', () => {
     expect(seenPrompt).toContain('- /content/discord/channels/dm.md');
   });
 });
-

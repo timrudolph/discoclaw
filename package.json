@@ -8,6 +8,8 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "discord:invite-url": "tsx scripts/discord-invite-url.ts",
+    "discord:smoke-test": "node scripts/discord-smoke-test.mjs",
+    "discord:join-threads": "node scripts/discord-join-threads.mjs",
     "claude:install-skills": "tsx scripts/install-claude-skills.ts",
     "sync:discord-context": "tsx scripts/sync-discord-context.ts",
     "migrate:weston-content": "tsx scripts/migrate-weston-content.ts",

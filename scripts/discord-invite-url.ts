@@ -88,6 +88,7 @@ const guildId = getArgValue('--guild-id');
 const disableGuildSelect = getArgValue('--disable-guild-select') === '1';
 const appCommands = getArgValue('--app-commands') === '1';
 const scopeRaw = getArgValue('--scope');
+const noWarn = getArgValue('--no-warn') === '1';
 
 const profile = (profileRaw?.trim() as Profile | undefined) ?? 'minimal';
 if (
@@ -98,6 +99,17 @@ if (
   profile !== 'admin'
 ) {
   throw new Error('Invalid --profile (use minimal|threads|moderator|admin)');
+}
+
+if (!noWarn && !profileRaw && !permsRaw) {
+  process.stderr.write(
+    [
+      'Note: no --profile or --perms provided; defaulting to --profile minimal.',
+      'Profiles: minimal | threads | moderator | admin',
+      'Tip: pass --profile explicitly to avoid accidental privilege mismatches.',
+      '',
+    ].join('\n'),
+  );
 }
 
 const perms = permsRaw ? parsePerms(permsRaw) : profilePerms(profile);
