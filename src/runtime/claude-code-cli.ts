@@ -131,7 +131,7 @@ export function createClaudeCliRuntime(opts: ClaudeCliRuntimeOpts): RuntimeAdapt
     let finished = false;
     let stdoutEnded = false;
     let stderrEnded = subprocess.stderr == null;
-    let procResult: { exitCode: number | null | undefined; stdout: string; stderr: string } | null = null;
+    let procResult: any | null = null;
 
     subprocess.stdout.on('data', (chunk) => {
       const s = String(chunk);
@@ -191,9 +191,33 @@ export function createClaudeCliRuntime(opts: ClaudeCliRuntimeOpts): RuntimeAdapt
       if (!stdoutEnded) return;
       if (!stderrEnded) return;
 
-      const exitCode = procResult.exitCode ?? 0;
-      const stdout = procResult.stdout;
-      const stderr = procResult.stderr;
+      const exitCode = procResult.exitCode;
+      const stdout = procResult.stdout ?? '';
+      const stderr = procResult.stderr ?? '';
+
+      if (procResult.timedOut) {
+        const msg = (procResult.originalMessage || procResult.shortMessage || procResult.message || '').trim();
+        push({
+          type: 'error',
+          message: `claude timed out after ${params.timeoutMs ?? 0}ms${msg ? `: ${msg}` : ''}`,
+        });
+        push({ type: 'done' });
+        finished = true;
+        wake();
+        return;
+      }
+
+      if (procResult.failed && exitCode == null) {
+        const msg = (procResult.shortMessage || procResult.originalMessage || procResult.message || '').trim();
+        push({
+          type: 'error',
+          message: msg || 'claude failed (no exit code)',
+        });
+        push({ type: 'done' });
+        finished = true;
+        wake();
+        return;
+      }
 
       // Flush trailing stderr.
       const stderrTail = stderrBuffered.trimEnd();
