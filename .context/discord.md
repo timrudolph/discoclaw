@@ -18,6 +18,10 @@ Behavior:
 - For each message, Discoclaw tells the runtime to `Read` the relevant channel context file before responding.
 - For threads, the parent channel context applies.
 
+Strict mode:
+- `DISCORD_REQUIRE_CHANNEL_CONTEXT=1` (default): the bot requires a per-channel context file.
+- `DISCORD_AUTO_INDEX_CHANNEL_CONTEXT=1` (default): when a message arrives for a new channel, Discoclaw appends it to `discord/DISCORD.md` and creates a blank stub file.
+
 ## Session Keys
 - DM: `discord:dm:<authorId>`
 - Thread: `discord:thread:<threadId>` (if the incoming channel is a thread)

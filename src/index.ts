@@ -56,6 +56,13 @@ try {
   discordChannelContext = undefined;
 }
 
+const requireChannelContext = (process.env.DISCORD_REQUIRE_CHANNEL_CONTEXT ?? '1') === '1';
+const autoIndexChannelContext = (process.env.DISCORD_AUTO_INDEX_CHANNEL_CONTEXT ?? '1') === '1';
+if (requireChannelContext && !discordChannelContext) {
+  log.error({ contentDir }, 'DISCORD_REQUIRE_CHANNEL_CONTEXT=1 but channel context failed to initialize');
+  process.exit(1);
+}
+
 const defaultWorkspaceCwd = dataDir
   ? path.join(dataDir, 'workspace')
   : path.join(__dirname, '..', 'workspace');
@@ -83,6 +90,8 @@ await startDiscordBot({
   allowChannelIds: restrictChannelIds ? allowChannelIds : undefined,
   log,
   discordChannelContext,
+  requireChannelContext,
+  autoIndexChannelContext,
   runtime,
   sessionManager,
   workspaceCwd,

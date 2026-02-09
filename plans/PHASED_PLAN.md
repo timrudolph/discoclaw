@@ -28,6 +28,7 @@ Guidelines:
 ## Phase 2: Data + Migration From Weston
 - [x] Inventory what should be copied from `legacy/weston` into `discoclaw-data/content` (selective, not wholesale).
 - [x] Define a stable `content/` layout under `DISCOCLAW_DATA_DIR` (what goes in there, what never should).
+- [ ] Enforce per-channel context modules (auto-index new channels; no silent fallback).
 - [ ] Add a small script (optional) to copy/sync selected “weston” artifacts into the new data root.
 
 ## Phase 3: Runtime Reliability

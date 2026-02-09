@@ -6,7 +6,7 @@ import type { SessionManager } from './sessions.js';
 import { isAllowlisted } from './discord/allowlist.js';
 import { KeyedQueue } from './group-queue.js';
 import type { DiscordChannelContext } from './discord/channel-context.js';
-import { resolveDiscordChannelContext } from './discord/channel-context.js';
+import { ensureIndexedDiscordChannelContext, resolveDiscordChannelContext } from './discord/channel-context.js';
 
 type LoggerLike = {
   info(obj: unknown, msg?: string): void;
@@ -22,6 +22,8 @@ export type BotParams = {
   allowChannelIds?: Set<string>;
   log?: LoggerLike;
   discordChannelContext?: DiscordChannelContext;
+  requireChannelContext: boolean;
+  autoIndexChannelContext: boolean;
   runtime: RuntimeAdapter;
   sessionManager: SessionManager;
   workspaceCwd: string;
@@ -190,6 +192,23 @@ export function createMessageCreateHandler(params: Omit<BotParams, 'token'>, que
         ? await ensureGroupDir(params.groupsDir, sessionKey)
         : params.workspaceCwd;
 
+      // Ensure every channel has its own context file (bootstrapped on first message).
+      if (!isDm && params.discordChannelContext && params.autoIndexChannelContext) {
+        const id = (threadParentId && threadParentId.trim()) ? threadParentId : String(msg.channelId ?? '');
+        // Best-effort: in most guild channels this will be populated; fallback uses channel-id.
+        const chName = String((msg.channel as any)?.name ?? (msg.channel as any)?.parent?.name ?? '').trim();
+        try {
+          await ensureIndexedDiscordChannelContext({
+            ctx: params.discordChannelContext,
+            channelId: id,
+            channelName: chName || undefined,
+            log: params.log,
+          });
+        } catch (err) {
+          params.log?.error({ err, channelId: id }, 'discord:context failed to ensure channel context');
+        }
+      }
+
       const channelCtx = resolveDiscordChannelContext({
         ctx: params.discordChannelContext,
         isDm,
@@ -197,12 +216,23 @@ export function createMessageCreateHandler(params: Omit<BotParams, 'token'>, que
         threadParentId,
       });
 
+      if (params.requireChannelContext && !isDm && !channelCtx.contextPath) {
+        await reply.edit('Configuration error: missing required channel context file for this channel ID.');
+        return;
+      }
+
       // Keep prompt small: link to the channel context file and instruct the runtime to read it.
       const promptParts: string[] = [];
+      if (params.discordChannelContext) {
+        promptParts.push(
+          `Base context: ${params.discordChannelContext.baseCorePath}`,
+          `Base context: ${params.discordChannelContext.baseSafetyPath}`,
+        );
+      }
       if (channelCtx.contextPath) {
         promptParts.push(
           `Channel context: ${channelCtx.contextPath}`,
-          `Instruction: Use the Read tool to read that file before responding. Follow it.`,
+          `Instruction: Use the Read tool to read the base context file(s) and the channel context file before responding. Follow them.`,
           '',
         );
       }

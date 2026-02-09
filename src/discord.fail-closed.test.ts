@@ -21,6 +21,8 @@ describe('Discord handler (fail closed)', () => {
       runtimeModel: 'opus',
       runtimeTools: [],
       runtimeTimeoutMs: 1000,
+      requireChannelContext: true,
+      autoIndexChannelContext: true,
     }, queue);
 
     const msg = {
@@ -51,6 +53,8 @@ describe('Discord handler (fail closed)', () => {
       runtimeModel: 'opus',
       runtimeTools: [],
       runtimeTimeoutMs: 1000,
+      requireChannelContext: true,
+      autoIndexChannelContext: true,
     }, queue);
 
     const msg = {
