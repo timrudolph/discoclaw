@@ -266,11 +266,24 @@ export function createClaudeCliRuntime(opts: ClaudeCliRuntimeOpts): RuntimeAdapt
     }
 
     // When the process completes, wait for streams to end too, then finalize.
-    subprocess.then(({ exitCode, stdout, stderr }) => {
-      procResult = { exitCode, stdout: stdout ?? '', stderr: stderr ?? '' };
+    // Important: keep the full execa result so we preserve fields like `timedOut`
+    // and `failed` (otherwise we end up with "claude exit undefined").
+    subprocess.then((result) => {
+      procResult = result;
       tryFinalize();
-    }).catch((err) => {
-      push({ type: 'error', message: String(err) });
+    }).catch((err: any) => {
+      // Timeouts/spawn errors reject the promise (even with `reject: false`).
+      // Surface a stable message and include execa's short/original message when present.
+      const timedOut = Boolean(err?.timedOut);
+      const msg = String(
+        (err?.originalMessage || err?.shortMessage || err?.message || err || '')
+      ).trim();
+      push({
+        type: 'error',
+        message: timedOut
+          ? `claude timed out after ${params.timeoutMs ?? 0}ms${msg ? `: ${msg}` : ''}`
+          : (msg || 'claude failed'),
+      });
       push({ type: 'done' });
       finished = true;
       wake();
