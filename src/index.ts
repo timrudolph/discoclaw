@@ -2,10 +2,12 @@ import 'dotenv/config';
 import pino from 'pino';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import fs from 'node:fs/promises';
 
 import { createClaudeCliRuntime } from './runtime/claude-code-cli.js';
 import { SessionManager } from './sessions.js';
 import { parseAllowChannelIds, parseAllowUserIds } from './discord/allowlist.js';
+import { loadDiscordChannelContext } from './discord/channel-context.js';
 import { startDiscordBot } from './discord.js';
 
 const log = pino({ level: process.env.LOG_LEVEL ?? 'info' });
@@ -40,6 +42,20 @@ const runtimeTimeoutMsRaw = (process.env.RUNTIME_TIMEOUT_MS ?? '').trim();
 const runtimeTimeoutMs = runtimeTimeoutMsRaw ? Math.max(1, Number(runtimeTimeoutMsRaw)) : 10 * 60_000;
 
 const dataDir = process.env.DISCOCLAW_DATA_DIR;
+const contentDir = (process.env.DISCOCLAW_CONTENT_DIR ?? '').trim() || (dataDir
+  ? path.join(dataDir, 'content')
+  : path.join(__dirname, '..', 'content'));
+
+// Best-effort: load only the channel index (small) and ensure placeholder channel files exist.
+let discordChannelContext = undefined as Awaited<ReturnType<typeof loadDiscordChannelContext>> | undefined;
+try {
+  await fs.mkdir(contentDir, { recursive: true });
+  discordChannelContext = await loadDiscordChannelContext({ contentDir, log });
+} catch (err) {
+  log.warn({ err, contentDir }, 'Failed to initialize discord channel context; continuing without it');
+  discordChannelContext = undefined;
+}
+
 const defaultWorkspaceCwd = dataDir
   ? path.join(dataDir, 'workspace')
   : path.join(__dirname, '..', 'workspace');
@@ -66,6 +82,7 @@ await startDiscordBot({
   allowUserIds,
   allowChannelIds: restrictChannelIds ? allowChannelIds : undefined,
   log,
+  discordChannelContext,
   runtime,
   sessionManager,
   workspaceCwd,

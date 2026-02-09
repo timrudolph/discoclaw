@@ -5,6 +5,19 @@
 - Fail closed: if the allowlist is empty, Discoclaw responds to nobody.
 - Optional: `DISCORD_CHANNEL_IDS` restricts the bot to specific guild channels (DMs are still allowed).
 
+## Channel Context (Token-Efficient)
+Discoclaw can link a per-channel context file into the runtime prompt (instead of inlining it) to keep initial context small.
+
+Layout (under `$DISCOCLAW_CONTENT_DIR` or `$DISCOCLAW_DATA_DIR/content`):
+- `discord/DISCORD.md` (index: channel -> id -> context file)
+- `discord/channels/*.md` (per-channel context modules)
+- `discord/channels/_default.md` (fallback for unknown channels)
+- `discord/channels/dm.md` (DM fallback)
+
+Behavior:
+- For each message, Discoclaw tells the runtime to `Read` the relevant channel context file before responding.
+- For threads, the parent channel context applies.
+
 ## Session Keys
 - DM: `discord:dm:<authorId>`
 - Thread: `discord:thread:<threadId>` (if the incoming channel is a thread)

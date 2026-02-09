@@ -5,6 +5,8 @@ import type { RuntimeAdapter } from './runtime/types.js';
 import type { SessionManager } from './sessions.js';
 import { isAllowlisted } from './discord/allowlist.js';
 import { KeyedQueue } from './group-queue.js';
+import type { DiscordChannelContext } from './discord/channel-context.js';
+import { resolveDiscordChannelContext } from './discord/channel-context.js';
 
 type LoggerLike = {
   info(obj: unknown, msg?: string): void;
@@ -19,6 +21,7 @@ export type BotParams = {
   // If unset, all channels are allowed (user allowlist still applies).
   allowChannelIds?: Set<string>;
   log?: LoggerLike;
+  discordChannelContext?: DiscordChannelContext;
   runtime: RuntimeAdapter;
   sessionManager: SessionManager;
   workspaceCwd: string;
@@ -171,6 +174,7 @@ export function createMessageCreateHandler(params: Omit<BotParams, 'token'>, que
 
     const isThread = typeof (msg.channel as any)?.isThread === 'function' ? (msg.channel as any).isThread() : false;
     const threadId = isThread ? String((msg.channel as any).id ?? '') : null;
+    const threadParentId = isThread ? String((msg.channel as any).parentId ?? '') : null;
     const sessionKey = discordSessionKey({
       channelId: msg.channelId,
       authorId: msg.author.id,
@@ -186,6 +190,29 @@ export function createMessageCreateHandler(params: Omit<BotParams, 'token'>, que
         ? await ensureGroupDir(params.groupsDir, sessionKey)
         : params.workspaceCwd;
 
+      const channelCtx = resolveDiscordChannelContext({
+        ctx: params.discordChannelContext,
+        isDm,
+        channelId: msg.channelId,
+        threadParentId,
+      });
+
+      // Keep prompt small: link to the channel context file and instruct the runtime to read it.
+      const promptParts: string[] = [];
+      if (channelCtx.contextPath) {
+        promptParts.push(
+          `Channel context: ${channelCtx.contextPath}`,
+          `Instruction: Use the Read tool to read that file before responding. Follow it.`,
+          '',
+        );
+      }
+      promptParts.push(String(msg.content ?? ''));
+      const prompt = promptParts.join('\n');
+
+      const addDirs: string[] = [];
+      if (params.useGroupDirCwd) addDirs.push(params.workspaceCwd);
+      if (params.discordChannelContext) addDirs.push(params.discordChannelContext.contentDir);
+
       let finalText = '';
       const t0 = Date.now();
       params.log?.info(
@@ -196,14 +223,17 @@ export function createMessageCreateHandler(params: Omit<BotParams, 'token'>, que
           model: params.runtimeModel,
           toolsCount: params.runtimeTools.length,
           timeoutMs: params.runtimeTimeoutMs,
+          channelId: channelCtx.channelId,
+          channelName: channelCtx.channelName,
+          hasChannelContext: Boolean(channelCtx.contextPath),
         },
         'invoke:start',
       );
       for await (const evt of params.runtime.invoke({
-        prompt: msg.content,
+        prompt,
         model: params.runtimeModel,
         cwd,
-        addDirs: params.useGroupDirCwd ? [params.workspaceCwd] : undefined,
+        addDirs: addDirs.length > 0 ? Array.from(new Set(addDirs)) : undefined,
         sessionId,
         tools: params.runtimeTools,
         timeoutMs: params.runtimeTimeoutMs,

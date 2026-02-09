@@ -17,6 +17,7 @@ pnpm dev
   - `DISCORD_ALLOW_USER_IDS` (comma/space-separated Discord user IDs; fail-closed if empty)
 - Useful:
   - `DISCOCLAW_DATA_DIR=/path/to/dropbox/discoclaw-data` (defaults `WORKSPACE_CWD` to `$DISCOCLAW_DATA_DIR/workspace`)
+  - `DISCOCLAW_CONTENT_DIR=/path/to/content` (defaults to `$DISCOCLAW_DATA_DIR/content`)
   - `WORKSPACE_CWD=/some/dir` (overrides the default)
   - `CLAUDE_BIN=claude`
   - `CLAUDE_DANGEROUSLY_SKIP_PERMISSIONS=1`

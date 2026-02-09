@@ -31,6 +31,7 @@ Discoclaw runs the runtime (Claude CLI) in a separate working directory (`WORKSP
 
 - If you set `DISCOCLAW_DATA_DIR`, Discoclaw defaults `WORKSPACE_CWD` to `$DISCOCLAW_DATA_DIR/workspace`.
 - If you do not set `DISCOCLAW_DATA_DIR`, Discoclaw defaults `WORKSPACE_CWD` to `./workspace` (relative to this repo).
+- Content defaults to `$DISCOCLAW_DATA_DIR/content` (override with `DISCOCLAW_CONTENT_DIR`).
 
 This lets you keep the repo fast/local, while storing durable "workspace content" in a Dropbox folder.
 
