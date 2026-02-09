@@ -1,5 +1,15 @@
 # Skills
 
-Placeholder directory to mirror the nanoclaw style.
+This directory is used by Claude Code to load *invocable* skills.
 
-Discoclaw itself does not require Claude Code skills, but we keep this layout so we can add helper skills later if we decide to drive parts of the workflow through Claude Code.
+The canonical skill sources live in `skills/` (committed).
+
+To make them invocable in Claude Code, install symlinks into this folder:
+
+```bash
+pnpm claude:install-skills
+```
+
+Notes:
+- `.claude/skills/` is gitignored (local-only).
+- The installer uses symlinks so updates to `skills/<name>/` apply immediately.
