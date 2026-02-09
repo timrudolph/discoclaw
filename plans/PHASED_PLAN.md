@@ -26,7 +26,7 @@ Guidelines:
 - [x] Add a short “safe operations” checklist for running in production channels.
 
 ## Phase 2: Data + Migration From Weston
-- [ ] Inventory what should be copied from `legacy/weston` into `discoclaw-data/content` (selective, not wholesale).
+- [x] Inventory what should be copied from `legacy/weston` into `discoclaw-data/content` (selective, not wholesale).
 - [ ] Define a stable `content/` layout under `DISCOCLAW_DATA_DIR` (what goes in there, what never should).
 - [ ] Add a small script (optional) to copy/sync selected “weston” artifacts into the new data root.
 
@@ -49,3 +49,4 @@ Guidelines:
 - 2026-02-09: Added optional `DISCORD_CHANNEL_IDS` allowlist and docs; started tests for allowlist parsing.
 - 2026-02-09: Added handler-level tests proving fail-closed routing + expanded ops safety checklist.
 - 2026-02-09: Switched to `stream-json` parsing path and added invoke lifecycle logging.
+- 2026-02-09: Started Phase 2 migration notes and identified initial Discord context import set.

@@ -3,6 +3,7 @@ dist/
 workspace
 exports
 legacy
+content
 var
 .env
 .env.*
