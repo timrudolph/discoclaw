@@ -148,6 +148,11 @@ export function createClaudeCliRuntime(opts: ClaudeCliRuntimeOpts): RuntimeAdapt
       for (const line of lines) {
         const trimmed = line.trim();
         if (!trimmed) continue;
+        if (opts.echoStdio) {
+          // Echo raw stream-json lines so Discord can show "what the terminal shows"
+          // even when no text fields are emitted yet.
+          push({ type: 'log_line', stream: 'stdout', line: trimmed });
+        }
         const evt = tryParseJsonLine(trimmed);
         const text = extractTextFromUnknownEvent(evt ?? trimmed);
         if (text) {
