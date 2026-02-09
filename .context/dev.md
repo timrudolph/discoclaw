@@ -9,6 +9,14 @@ pnpm build
 pnpm dev
 ```
 
+## One-Off: Sync Discord Content
+
+```bash
+pnpm sync:discord-context
+pnpm sync:discord-context -- --rewrite-index
+pnpm sync:discord-context -- --add-channel 123456789012345678:my-channel
+```
+
 ## Environment
 
 - Copy `.env.example` -> `.env`

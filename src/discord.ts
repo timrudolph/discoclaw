@@ -222,22 +222,18 @@ export function createMessageCreateHandler(params: Omit<BotParams, 'token'>, que
       }
 
       // Keep prompt small: link to the channel context file and instruct the runtime to read it.
-      const promptParts: string[] = [];
+      const contextFiles: string[] = [];
       if (params.discordChannelContext) {
-        promptParts.push(
-          `Base context: ${params.discordChannelContext.baseCorePath}`,
-          `Base context: ${params.discordChannelContext.baseSafetyPath}`,
-        );
+        contextFiles.push(params.discordChannelContext.baseCorePath);
+        contextFiles.push(params.discordChannelContext.baseSafetyPath);
       }
-      if (channelCtx.contextPath) {
-        promptParts.push(
-          `Channel context: ${channelCtx.contextPath}`,
-          `Instruction: Use the Read tool to read the base context file(s) and the channel context file before responding. Follow them.`,
-          '',
-        );
-      }
-      promptParts.push(String(msg.content ?? ''));
-      const prompt = promptParts.join('\n');
+      if (channelCtx.contextPath) contextFiles.push(channelCtx.contextPath);
+
+      const prompt =
+        `Context files (read with Read tool before responding, in order):\n` +
+        contextFiles.map((p) => `- ${p}`).join('\n') +
+        `\n\n---\nUser message:\n` +
+        String(msg.content ?? '');
 
       const addDirs: string[] = [];
       if (params.useGroupDirCwd) addDirs.push(params.workspaceCwd);

@@ -7,6 +7,7 @@
     "dev": "tsx src/index.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
+    "sync:discord-context": "tsx scripts/sync-discord-context.ts",
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
