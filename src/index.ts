@@ -79,6 +79,37 @@ const outputFormat = (process.env.CLAUDE_OUTPUT_FORMAT ?? 'text') === 'stream-js
   : 'text';
 const echoStdio = (process.env.CLAUDE_ECHO_STDIO ?? '0') === '1';
 
+// Debug: surface common "works in terminal but not in systemd" issues without logging secrets.
+if ((process.env.DISCOCLAW_DEBUG_RUNTIME ?? '0') === '1') {
+  log.info(
+    {
+      env: {
+        HOME: process.env.HOME,
+        USER: process.env.USER,
+        PATH: process.env.PATH,
+        XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR,
+        DBUS_SESSION_BUS_ADDRESS: process.env.DBUS_SESSION_BUS_ADDRESS ? '(set)' : '(unset)',
+        DISPLAY: process.env.DISPLAY ? '(set)' : '(unset)',
+        WAYLAND_DISPLAY: process.env.WAYLAND_DISPLAY ? '(set)' : '(unset)',
+      },
+      claude: {
+        bin: claudeBin,
+        outputFormat,
+        echoStdio,
+        dangerouslySkipPermissions,
+      },
+      runtime: {
+        model: runtimeModel,
+        toolsCount: runtimeTools.length,
+        timeoutMs: runtimeTimeoutMs,
+        workspaceCwd,
+        groupsDir,
+      },
+    },
+    'debug:runtime config',
+  );
+}
+
 const runtime = createClaudeCliRuntime({
   claudeBin,
   dangerouslySkipPermissions,

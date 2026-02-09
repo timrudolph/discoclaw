@@ -321,7 +321,7 @@ export function createMessageCreateHandler(params: Omit<BotParams, 'token'>, que
               await maybeEdit(false);
             } else if (evt.type === 'log_line') {
               // Echo stderr into the streamed output when enabled by the runtime.
-              const prefix = evt.stream === 'stderr' ? '[stderr] ' : '';
+              const prefix = evt.stream === 'stderr' ? '[stderr] ' : '[stdout] ';
               deltaText += (deltaText && !deltaText.endsWith('\n') ? '\n' : '') + prefix + evt.line + '\n';
               await maybeEdit(false);
             }
