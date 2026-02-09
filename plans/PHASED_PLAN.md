@@ -38,7 +38,7 @@ Guidelines:
 
 ## Phase 4: Tests + CI Basics
 - [x] Add minimal tests for allowlist parsing + session key mapping.
-- [ ] Add a smoke test for runtime adapter (mock execa).
+- [x] Add a smoke test for runtime adapter (mock execa).
 - [x] Add a simple CI workflow (build + test) if desired.
 
 ## Phase 5: Ops
