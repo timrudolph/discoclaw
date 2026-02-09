@@ -22,6 +22,5 @@ These session keys map to persisted UUIDs via `data/sessions.json`.
 ## Group CWD Mode
 If `USE_GROUP_DIR_CWD=1`:
 - CWD becomes `groups/<sessionKey>/` for that Discord context.
-- The main workspace (`WORKSPACE_CWD`, usually `/home/davidmarsh/weston`) is added via `--add-dir` so tools can still read/write it.
+- The main workspace (`WORKSPACE_CWD`) is added via `--add-dir` so tools can still read/write it.
 - Discoclaw bootstraps `groups/<sessionKey>/CLAUDE.md` on first use.
-
