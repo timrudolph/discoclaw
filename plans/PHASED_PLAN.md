@@ -28,7 +28,7 @@ Guidelines:
 ## Phase 2: Data + Migration From Weston
 - [x] Inventory what should be copied from `legacy/weston` into `discoclaw-data/content` (selective, not wholesale).
 - [x] Define a stable `content/` layout under `DISCOCLAW_DATA_DIR` (what goes in there, what never should).
-- [ ] Enforce per-channel context modules (auto-index new channels; no silent fallback).
+- [x] Enforce per-channel context modules (auto-index new channels; no silent fallback).
 - [ ] Add a small script (optional) to copy/sync selected “weston” artifacts into the new data root.
 
 ## Phase 3: Runtime Reliability
@@ -51,3 +51,4 @@ Guidelines:
 - 2026-02-09: Added handler-level tests proving fail-closed routing + expanded ops safety checklist.
 - 2026-02-09: Switched to `stream-json` parsing path and added invoke lifecycle logging.
 - 2026-02-09: Started Phase 2 migration notes and identified initial Discord context import set.
+- 2026-02-09: Enforced per-channel context modules; auto-indexes new channels into content on first use.
