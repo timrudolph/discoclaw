@@ -18,6 +18,7 @@ Never auto-load all `.context/` modules. Read only what the task requires.
 
 | Task area | Module |
 |-----------|--------|
+| PA behavior / Discord formatting / memory | `.context/pa.md` |
 | Discord behavior / routing | `.context/discord.md` |
 | Runtime adapters / CLI flags | `.context/runtime.md` |
 | Dev workflow / env / build | `.context/dev.md` |
@@ -26,9 +27,15 @@ Never auto-load all `.context/` modules. Read only what the task requires.
 
 See `.context/README.md` for details.
 
-## Workspace PA Templates
+## Identity
 
-`templates/workspace/` contains personal assistant template files (SOUL.md, IDENTITY.md, USER.md, AGENTS.md, TOOLS.md, HEARTBEAT.md, BOOTSTRAP.md). These are scaffolded into the workspace directory on first run (copy-if-missing). SOUL, IDENTITY, and USER are injected into every prompt; BOOTSTRAP.md triggers onboarding on first run and is deleted afterwards.
+On session start, read your workspace identity files if they exist:
+1. `workspace/SOUL.md` — who you are
+2. `workspace/IDENTITY.md` — your name and vibe
+3. `workspace/USER.md` — who you're helping
+
+These are personal, gitignored, and may not exist yet. If `workspace/BOOTSTRAP.md`
+exists, that's your first run — read it, follow it, then delete it.
 
 ## Working Rules
 
@@ -37,7 +44,6 @@ See `.context/README.md` for details.
 - Commit regularly — don't batch an entire session into one commit.
 - After completing a task, offer to push to the remote.
 - End of task: `git status --short` must be clean or intentionally staged.
-- If `BOOTSTRAP.md` exists, read it, act on it, then delete it.
 
 ## Commands
 

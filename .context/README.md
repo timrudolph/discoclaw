@@ -7,6 +7,7 @@ Core instructions live in `CLAUDE.md` at the repo root.
 
 | When doing... | Read this first |
 |---------------|-----------------|
+| **PA behavior / formatting / memory** | `pa.md` |
 | **Discord behavior + routing** | `discord.md` |
 | **Discord bot setup (invite + env)** | `bot-setup.md` |
 | **Development / build / test** | `dev.md` |
@@ -18,6 +19,7 @@ Core instructions live in `CLAUDE.md` at the repo root.
 - Do not load modules "just in case."
 
 ## Quick Reference
+- **pa.md** — PA behavioral rules, Discord formatting, memory, group chat etiquette
 - **dev.md** — Commands, env, local dev loops, build/test
 - **discord.md** — Allowlist gating, session keys, threading rules, output constraints
 - **runtime.md** — Runtime adapter interface, Claude CLI flags, capability routing
