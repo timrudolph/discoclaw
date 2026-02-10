@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 
 import { createMessageCreateHandler } from './discord.js';
+import { saveDurableMemory, addItem } from './discord/durable-memory.js';
+import type { DurableMemoryStore } from './discord/durable-memory.js';
 
 function makeQueue() {
   return {
@@ -66,6 +71,11 @@ describe('prompt includes correct context file paths', () => {
       summaryMaxChars: 2000,
       summaryEveryNTurns: 5,
       summaryDataDir: '/tmp/summaries',
+      durableMemoryEnabled: false,
+      durableDataDir: '/tmp/durable',
+      durableInjectMaxChars: 2000,
+      durableMaxItems: 200,
+      memoryCommandsEnabled: false,
     }, queue);
 
     await handler(makeMsg({ channelId: 'chan' }));
@@ -121,6 +131,11 @@ describe('prompt includes correct context file paths', () => {
       summaryMaxChars: 2000,
       summaryEveryNTurns: 5,
       summaryDataDir: '/tmp/summaries',
+      durableMemoryEnabled: false,
+      durableDataDir: '/tmp/durable',
+      durableInjectMaxChars: 2000,
+      durableMaxItems: 200,
+      memoryCommandsEnabled: false,
     }, queue);
 
     await handler(makeMsg({
@@ -176,11 +191,119 @@ describe('prompt includes correct context file paths', () => {
       summaryMaxChars: 2000,
       summaryEveryNTurns: 5,
       summaryDataDir: '/tmp/summaries',
+      durableMemoryEnabled: false,
+      durableDataDir: '/tmp/durable',
+      durableInjectMaxChars: 2000,
+      durableMaxItems: 200,
+      memoryCommandsEnabled: false,
     }, queue);
 
     await handler(makeMsg({ guildId: null, channelId: 'dmchan' }));
 
     expect(runtime.invoke).toHaveBeenCalled();
     expect(seenPrompt).toContain('- /content/discord/channels/dm.md');
+  });
+});
+
+describe('durable memory injection into prompt', () => {
+  it('injects durable section when enabled and store has items', async () => {
+    const queue = makeQueue();
+    let seenPrompt = '';
+    const runtime = {
+      invoke: vi.fn(async function* (p: any) {
+        seenPrompt = p.prompt;
+        yield { type: 'text_final', text: 'ok' } as any;
+      }),
+    } as any;
+
+    // Seed a durable memory file on disk.
+    const durableDir = await fs.mkdtemp(path.join(os.tmpdir(), 'durable-integration-'));
+    const store: DurableMemoryStore = { version: 1, updatedAt: 0, items: [] };
+    addItem(store, 'User prefers TypeScript', { type: 'manual' }, 200);
+    await saveDurableMemory(durableDir, '123', store);
+
+    const handler = createMessageCreateHandler({
+      allowUserIds: new Set(['123']),
+      runtime,
+      sessionManager: { getOrCreate: vi.fn(async () => 'sess') } as any,
+      workspaceCwd: '/tmp',
+      groupsDir: '/tmp',
+      useGroupDirCwd: false,
+      runtimeModel: 'opus',
+      runtimeTools: [],
+      runtimeTimeoutMs: 1000,
+      requireChannelContext: false,
+      autoIndexChannelContext: false,
+      autoJoinThreads: false,
+      useRuntimeSessions: true,
+      discordActionsEnabled: false,
+      messageHistoryBudget: 0,
+      summaryEnabled: false,
+      summaryModel: 'haiku',
+      summaryMaxChars: 2000,
+      summaryEveryNTurns: 5,
+      summaryDataDir: '/tmp/summaries',
+      durableMemoryEnabled: true,
+      durableDataDir: durableDir,
+      durableInjectMaxChars: 2000,
+      durableMaxItems: 200,
+      memoryCommandsEnabled: false,
+    }, queue);
+
+    await handler(makeMsg({ guildId: null, channelId: 'dmchan' }));
+
+    expect(runtime.invoke).toHaveBeenCalled();
+    expect(seenPrompt).toContain('Durable memory (user-specific notes):');
+    expect(seenPrompt).toContain('[fact] User prefers TypeScript');
+  });
+});
+
+describe('memory command interception', () => {
+  it('!memory show returns early without invoking runtime', async () => {
+    const queue = makeQueue();
+    const runtime = {
+      invoke: vi.fn(async function* () {
+        yield { type: 'text_final', text: 'should not run' } as any;
+      }),
+    } as any;
+    const sessionManager = { getOrCreate: vi.fn(async () => 'sess') } as any;
+
+    const durableDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cmd-integration-'));
+    const summaryDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cmd-summary-'));
+
+    const handler = createMessageCreateHandler({
+      allowUserIds: new Set(['123']),
+      runtime,
+      sessionManager,
+      workspaceCwd: '/tmp',
+      groupsDir: '/tmp',
+      useGroupDirCwd: false,
+      runtimeModel: 'opus',
+      runtimeTools: [],
+      runtimeTimeoutMs: 1000,
+      requireChannelContext: false,
+      autoIndexChannelContext: false,
+      autoJoinThreads: false,
+      useRuntimeSessions: true,
+      discordActionsEnabled: false,
+      messageHistoryBudget: 0,
+      summaryEnabled: false,
+      summaryModel: 'haiku',
+      summaryMaxChars: 2000,
+      summaryEveryNTurns: 5,
+      summaryDataDir: summaryDir,
+      durableMemoryEnabled: true,
+      durableDataDir: durableDir,
+      durableInjectMaxChars: 2000,
+      durableMaxItems: 200,
+      memoryCommandsEnabled: true,
+    }, queue);
+
+    const msg = makeMsg({ guildId: null, channelId: 'dmchan', content: '!memory show' });
+    await handler(msg);
+
+    expect(runtime.invoke).not.toHaveBeenCalled();
+    expect(sessionManager.getOrCreate).not.toHaveBeenCalled();
+    expect(msg.reply).toHaveBeenCalledWith(expect.stringContaining('Durable memory:'));
   });
 });

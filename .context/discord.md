@@ -33,6 +33,19 @@ When `DISCOCLAW_SUMMARY_ENABLED=1` (default), Discoclaw maintains a rolling conv
 
 Summaries are stored on disk at `data/memory/rolling/<safe-session-key>.json` and injected into the prompt between context files and recent conversation as a "Conversation memory" section. When recent messages and the summary conflict, the recent messages take precedence (the summary is lossy). Summary generation is best-effort: failures are logged and do not block responding.
 
+### Durable Memory
+When `DISCOCLAW_DURABLE_MEMORY_ENABLED=1` (default), Discoclaw maintains persistent per-user memory that survives across channels and sessions. Items are stored at `data/memory/durable/<user-id>.json` and include facts, preferences, projects, and other user-specific notes.
+
+Active durable items are injected into the prompt between context files and conversation memory, sorted by most recently updated, capped by `DISCOCLAW_DURABLE_INJECT_MAX_CHARS` (default 2000). Each user can store up to `DISCOCLAW_DURABLE_MAX_ITEMS` (default 200) items.
+
+When `DISCOCLAW_MEMORY_COMMANDS_ENABLED=1` (default), users can manage their durable memory via commands:
+- `!memory` or `!memory show` — display active durable items and rolling summary
+- `!memory remember <text>` — store a new fact
+- `!memory forget <text>` — deprecate matching items (requires 60% text-length match)
+- `!memory reset rolling` — clear the rolling summary for the current session
+
+Memory commands are intercepted before runtime invocation and do not consume API tokens.
+
 ## Session Keys
 - DM: `discord:dm:<authorId>`
 - Thread: `discord:thread:<threadId>` (if the incoming channel is a thread)

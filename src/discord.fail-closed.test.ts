@@ -32,6 +32,11 @@ describe('Discord handler (fail closed)', () => {
       summaryMaxChars: 2000,
       summaryEveryNTurns: 5,
       summaryDataDir: '/tmp/summaries',
+      durableMemoryEnabled: false,
+      durableDataDir: '/tmp/durable',
+      durableInjectMaxChars: 2000,
+      durableMaxItems: 200,
+      memoryCommandsEnabled: false,
     }, queue);
 
     const msg = {
@@ -73,6 +78,11 @@ describe('Discord handler (fail closed)', () => {
       summaryMaxChars: 2000,
       summaryEveryNTurns: 5,
       summaryDataDir: '/tmp/summaries',
+      durableMemoryEnabled: false,
+      durableDataDir: '/tmp/durable',
+      durableInjectMaxChars: 2000,
+      durableMaxItems: 200,
+      memoryCommandsEnabled: false,
     }, queue);
 
     const msg = {

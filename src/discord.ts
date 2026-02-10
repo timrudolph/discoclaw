@@ -11,6 +11,8 @@ import { discordSessionKey } from './discord/session-key.js';
 import { parseDiscordActions, executeDiscordActions, discordActionsPromptSection } from './discord/actions.js';
 import { fetchMessageHistory } from './discord/message-history.js';
 import { loadSummary, saveSummary, generateSummary } from './discord/summarizer.js';
+import { loadDurableMemory, selectItemsForInjection, formatDurableSection } from './discord/durable-memory.js';
+import { parseMemoryCommand, handleMemoryCommand } from './discord/memory-commands.js';
 
 type LoggerLike = {
   info(obj: unknown, msg?: string): void;
@@ -48,6 +50,11 @@ export type BotParams = {
   summaryMaxChars: number;
   summaryEveryNTurns: number;
   summaryDataDir: string;
+  durableMemoryEnabled: boolean;
+  durableDataDir: string;
+  durableInjectMaxChars: number;
+  durableMaxItems: number;
+  memoryCommandsEnabled: boolean;
 };
 
 type QueueLike = Pick<KeyedQueue, 'run'>;
@@ -231,6 +238,25 @@ export function createMessageCreateHandler(params: Omit<BotParams, 'token'>, que
       await queue.run(sessionKey, async () => {
         let reply: any = null;
         try {
+          // Handle !memory commands before session creation or the "..." placeholder.
+          if (params.memoryCommandsEnabled) {
+            const cmd = parseMemoryCommand(String(msg.content ?? ''));
+            if (cmd) {
+              const response = await handleMemoryCommand(cmd, {
+                userId: msg.author.id,
+                sessionKey,
+                durableDataDir: params.durableDataDir,
+                durableMaxItems: params.durableMaxItems,
+                durableInjectMaxChars: params.durableInjectMaxChars,
+                summaryDataDir: params.summaryDataDir,
+                channelId: msg.channelId,
+                messageId: msg.id,
+              });
+              await msg.reply(response);
+              return;
+            }
+          }
+
           const sessionId = params.useRuntimeSessions
             ? await params.sessionManager.getOrCreate(sessionKey)
             : null;
@@ -315,9 +341,25 @@ export function createMessageCreateHandler(params: Omit<BotParams, 'token'>, que
             }
           }
 
+          let durableSection = '';
+          if (params.durableMemoryEnabled) {
+            try {
+              const store = await loadDurableMemory(params.durableDataDir, msg.author.id);
+              if (store) {
+                const items = selectItemsForInjection(store, params.durableInjectMaxChars);
+                if (items.length > 0) durableSection = formatDurableSection(items);
+              }
+            } catch (err) {
+              params.log?.warn({ err, userId: msg.author.id }, 'discord:durable memory load failed');
+            }
+          }
+
           let prompt =
             `Context files (read with Read tool before responding, in order):\n` +
             contextFiles.map((p) => `- ${p}`).join('\n') +
+            (durableSection
+              ? `\n\n---\nDurable memory (user-specific notes):\n${durableSection}\n`
+              : '') +
             (summarySection
               ? `\n\n---\nConversation memory:\n${summarySection}\n`
               : '') +

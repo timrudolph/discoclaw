@@ -88,6 +88,12 @@ const summaryMaxChars = Math.max(0, Number(process.env.DISCOCLAW_SUMMARY_MAX_CHA
 const summaryEveryNTurns = Math.max(1, Number(process.env.DISCOCLAW_SUMMARY_EVERY_N_TURNS ?? '5'));
 const summaryDataDir = (process.env.DISCOCLAW_SUMMARY_DATA_DIR ?? '').trim()
   || (dataDir ? path.join(dataDir, 'memory', 'rolling') : path.join(__dirname, '..', 'data', 'memory', 'rolling'));
+const durableMemoryEnabled = (process.env.DISCOCLAW_DURABLE_MEMORY_ENABLED ?? '1') === '1';
+const durableDataDir = (process.env.DISCOCLAW_DURABLE_DATA_DIR ?? '').trim()
+  || (dataDir ? path.join(dataDir, 'memory', 'durable') : path.join(__dirname, '..', 'data', 'memory', 'durable'));
+const durableInjectMaxChars = Math.max(1, Number(process.env.DISCOCLAW_DURABLE_INJECT_MAX_CHARS ?? '2000'));
+const durableMaxItems = Math.max(1, Number(process.env.DISCOCLAW_DURABLE_MAX_ITEMS ?? '200'));
+const memoryCommandsEnabled = (process.env.DISCOCLAW_MEMORY_COMMANDS_ENABLED ?? '1') === '1';
 if (requireChannelContext && !discordChannelContext) {
   log.error({ contentDir }, 'DISCORD_REQUIRE_CHANNEL_CONTEXT=1 but channel context failed to initialize');
   process.exit(1);
@@ -179,6 +185,11 @@ await startDiscordBot({
   summaryMaxChars,
   summaryEveryNTurns,
   summaryDataDir,
+  durableMemoryEnabled,
+  durableDataDir,
+  durableInjectMaxChars,
+  durableMaxItems,
+  memoryCommandsEnabled,
 });
 
 log.info('Discord bot started');
