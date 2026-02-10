@@ -40,11 +40,7 @@ export type DiscordActionResult =
   | { ok: true; summary: string }
   | { ok: false; error: string };
 
-type LoggerLike = {
-  info(obj: unknown, msg?: string): void;
-  warn(obj: unknown, msg?: string): void;
-  error(obj: unknown, msg?: string): void;
-};
+import type { LoggerLike } from './action-types.js';
 
 // ---------------------------------------------------------------------------
 // Valid types (union of all sub-module type sets)

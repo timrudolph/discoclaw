@@ -14,7 +14,8 @@ export type PollActionRequest = {
   durationHours?: number;
 };
 
-export const POLL_ACTION_TYPES = new Set(['poll']);
+const POLL_TYPE_MAP: Record<PollActionRequest['type'], true> = { poll: true };
+export const POLL_ACTION_TYPES = new Set<string>(Object.keys(POLL_TYPE_MAP));
 
 // ---------------------------------------------------------------------------
 // Executor

@@ -1,4 +1,5 @@
 import { GuildScheduledEventEntityType, GuildScheduledEventPrivacyLevel } from 'discord.js';
+import type { Guild, Role } from 'discord.js';
 import type { DiscordActionResult, ActionContext } from './actions.js';
 import { resolveChannel, fmtTime } from './action-utils.js';
 
@@ -15,22 +16,23 @@ export type GuildActionRequest =
   | { type: 'eventList' }
   | { type: 'eventCreate'; name: string; startTime: string; endTime?: string; description?: string; channelId?: string; location?: string };
 
-export const GUILD_ACTION_TYPES = new Set([
-  'memberInfo', 'roleInfo', 'roleAdd', 'roleRemove',
-  'searchMessages', 'eventList', 'eventCreate',
-]);
+const GUILD_TYPE_MAP: Record<GuildActionRequest['type'], true> = {
+  memberInfo: true, roleInfo: true, roleAdd: true, roleRemove: true,
+  searchMessages: true, eventList: true, eventCreate: true,
+};
+export const GUILD_ACTION_TYPES = new Set<string>(Object.keys(GUILD_TYPE_MAP));
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function resolveRole(guild: any, ref: string) {
+function resolveRole(guild: Guild, ref: string): Role | undefined {
   // Try by ID.
   const byId = guild.roles.cache.get(ref);
   if (byId) return byId;
   // Try by name (case-insensitive).
   return guild.roles.cache.find(
-    (r: any) => r.name.toLowerCase() === ref.toLowerCase(),
+    (r) => r.name.toLowerCase() === ref.toLowerCase(),
   );
 }
 
@@ -54,7 +56,7 @@ export async function executeGuildAction(
         `Display: ${member.displayName}`,
         `ID: ${member.id}`,
         `Joined: ${member.joinedAt ? fmtTime(member.joinedAt) : 'unknown'}`,
-        `Roles: ${member.roles.cache.filter((r: any) => r.name !== '@everyone').map((r: any) => r.name).join(', ') || '(none)'}`,
+        `Roles: ${member.roles.cache.filter((r) => r.name !== '@everyone').map((r) => r.name).join(', ') || '(none)'}`,
       ];
       if (member.user.bot) info.push('Bot: yes');
       return { ok: true, summary: info.join('\n') };
@@ -62,14 +64,14 @@ export async function executeGuildAction(
 
     case 'roleInfo': {
       const roles = [...guild.roles.cache.values()]
-        .filter((r: any) => r.name !== '@everyone')
-        .sort((a: any, b: any) => b.position - a.position);
+        .filter((r) => r.name !== '@everyone')
+        .sort((a, b) => b.position - a.position);
 
       if (roles.length === 0) {
         return { ok: true, summary: 'No custom roles' };
       }
 
-      const lines = roles.map((r: any) => {
+      const lines = roles.map((r) => {
         const members = r.members?.size ?? '?';
         return `${r.name} (id:${r.id}, ${members} members)`;
       });

@@ -9,7 +9,10 @@ export type ModerationActionRequest =
   | { type: 'kick'; userId: string; reason?: string }
   | { type: 'ban'; userId: string; reason?: string; deleteMessageDays?: number };
 
-export const MODERATION_ACTION_TYPES = new Set(['timeout', 'kick', 'ban']);
+const MODERATION_TYPE_MAP: Record<ModerationActionRequest['type'], true> = {
+  timeout: true, kick: true, ban: true,
+};
+export const MODERATION_ACTION_TYPES = new Set<string>(Object.keys(MODERATION_TYPE_MAP));
 
 // ---------------------------------------------------------------------------
 // Executor

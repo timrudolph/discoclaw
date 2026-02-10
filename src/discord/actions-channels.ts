@@ -1,4 +1,5 @@
 import { ChannelType } from 'discord.js';
+import type { GuildChannel } from 'discord.js';
 import type { DiscordActionResult, ActionContext } from './actions.js';
 
 // ---------------------------------------------------------------------------
@@ -13,10 +14,12 @@ export type ChannelActionRequest =
   | { type: 'channelInfo'; channelId: string }
   | { type: 'categoryCreate'; name: string; position?: number };
 
-export const CHANNEL_ACTION_TYPES = new Set([
-  'channelCreate', 'channelEdit', 'channelDelete',
-  'channelList', 'channelInfo', 'categoryCreate',
-]);
+// Record ensures every union member is listed; TS errors if a new type is added to the union but not here.
+const CHANNEL_TYPE_MAP: Record<ChannelActionRequest['type'], true> = {
+  channelCreate: true, channelEdit: true, channelDelete: true,
+  channelList: true, channelInfo: true, categoryCreate: true,
+};
+export const CHANNEL_ACTION_TYPES = new Set<string>(Object.keys(CHANNEL_TYPE_MAP));
 
 // ---------------------------------------------------------------------------
 // Executor
@@ -64,7 +67,7 @@ export async function executeChannelAction(
       if (action.name != null) edits.name = action.name;
       if (action.topic != null) edits.topic = action.topic;
 
-      await (channel as any).edit(edits);
+      await (channel as GuildChannel).edit(edits);
       const parts: string[] = [];
       if (action.name != null) parts.push(`name → ${action.name}`);
       if (action.topic != null) parts.push(`topic updated`);
@@ -75,7 +78,7 @@ export async function executeChannelAction(
       const channel = guild.channels.cache.get(action.channelId);
       if (!channel) return { ok: false, error: `Channel "${action.channelId}" not found` };
       const name = channel.name;
-      await (channel as any).delete();
+      await (channel as GuildChannel).delete();
       return { ok: true, summary: `Deleted #${name}` };
     }
 
@@ -115,10 +118,9 @@ export async function executeChannelAction(
         `Type: ${ChannelType[channel.type] ?? channel.type}`,
       ];
       if (channel.parent) info.push(`Category: ${channel.parent.name}`);
-      if ('topic' in channel && (channel as any).topic) info.push(`Topic: ${(channel as any).topic}`);
-      if ('createdAt' in channel && (channel as any).createdAt) {
-        info.push(`Created: ${(channel as any).createdAt.toISOString().slice(0, 10)}`);
-      }
+      const gc = channel as GuildChannel & { topic?: string; createdAt?: Date };
+      if (gc.topic) info.push(`Topic: ${gc.topic}`);
+      if (gc.createdAt) info.push(`Created: ${gc.createdAt.toISOString().slice(0, 10)}`);
       return { ok: true, summary: info.join('\n') };
     }
 

@@ -17,11 +17,12 @@ export type MessagingActionRequest =
   | { type: 'unpinMessage'; channelId: string; messageId: string }
   | { type: 'listPins'; channel: string };
 
-export const MESSAGING_ACTION_TYPES = new Set([
-  'sendMessage', 'react', 'readMessages', 'fetchMessage',
-  'editMessage', 'deleteMessage', 'threadCreate',
-  'pinMessage', 'unpinMessage', 'listPins',
-]);
+const MESSAGING_TYPE_MAP: Record<MessagingActionRequest['type'], true> = {
+  sendMessage: true, react: true, readMessages: true, fetchMessage: true,
+  editMessage: true, deleteMessage: true, threadCreate: true,
+  pinMessage: true, unpinMessage: true, listPins: true,
+};
+export const MESSAGING_ACTION_TYPES = new Set<string>(Object.keys(MESSAGING_TYPE_MAP));
 
 // ---------------------------------------------------------------------------
 // Constants

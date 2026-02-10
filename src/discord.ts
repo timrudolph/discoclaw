@@ -10,16 +10,11 @@ import { ensureIndexedDiscordChannelContext, resolveDiscordChannelContext } from
 import { discordSessionKey } from './discord/session-key.js';
 import { parseDiscordActions, executeDiscordActions, discordActionsPromptSection } from './discord/actions.js';
 import type { ActionCategoryFlags } from './discord/actions.js';
+import type { LoggerLike } from './discord/action-types.js';
 import { fetchMessageHistory } from './discord/message-history.js';
 import { loadSummary, saveSummary, generateSummary } from './discord/summarizer.js';
 import { loadDurableMemory, selectItemsForInjection, formatDurableSection } from './discord/durable-memory.js';
 import { parseMemoryCommand, handleMemoryCommand } from './discord/memory-commands.js';
-
-type LoggerLike = {
-  info(obj: unknown, msg?: string): void;
-  warn(obj: unknown, msg?: string): void;
-  error(obj: unknown, msg?: string): void;
-};
 
 export type BotParams = {
   token: string;
@@ -211,6 +206,14 @@ function renderDiscordTail(text: string, limit = 1900): string {
 }
 
 export function createMessageCreateHandler(params: Omit<BotParams, 'token'>, queue: QueueLike) {
+  const actionFlags: ActionCategoryFlags = {
+    channels: params.discordActionsChannels,
+    messaging: params.discordActionsMessaging,
+    guild: params.discordActionsGuild,
+    moderation: params.discordActionsModeration,
+    polls: params.discordActionsPolls,
+  };
+
   return async (msg: any) => {
     try {
       if (!msg?.author || msg.author.bot) return;
@@ -374,14 +377,6 @@ export function createMessageCreateHandler(params: Omit<BotParams, 'token'>, que
               : '\n') +
             `\n---\nUser message:\n` +
             String(msg.content ?? '');
-
-          const actionFlags: ActionCategoryFlags = {
-            channels: params.discordActionsChannels,
-            messaging: params.discordActionsMessaging,
-            guild: params.discordActionsGuild,
-            moderation: params.discordActionsModeration,
-            polls: params.discordActionsPolls,
-          };
 
           if (params.discordActionsEnabled && !isDm) {
             prompt += '\n\n---\n' + discordActionsPromptSection(actionFlags);
