@@ -247,6 +247,11 @@ export function createMessageCreateHandler(params: Omit<BotParams, 'token'>, que
     try {
       if (!msg?.author || msg.author.bot) return;
 
+      // Skip system messages (joins, pins, boosts, etc.) — can't reply to them.
+      // Default = 0, Reply = 19; everything else is a system message.
+      const t = msg.type;
+      if (t != null && t !== 0 && t !== 19) return;
+
       if (!isAllowlisted(params.allowUserIds, msg.author.id)) return;
 
       const actionFlags: ActionCategoryFlags = {
