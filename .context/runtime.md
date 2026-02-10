@@ -49,3 +49,18 @@ Example: `{ "tier": "standard", "note": "Never modify files outside workspace." 
 
 The optional `note` field is injected into the prompt as a soft behavioral constraint.
 Custom tier example: `{ "tier": "custom", "tools": ["Read", "Edit", "Bash"] }`
+
+## Session Scanning & Tool-Aware Streaming
+
+Two opt-in features for better Discord UX during tool-heavy invocations:
+
+| Env Var | Default | Purpose |
+|---------|---------|---------|
+| `DISCOCLAW_SESSION_SCANNING` | `0` | Tail Claude Code's JSONL session log to emit `tool_start`/`tool_end` events |
+| `DISCOCLAW_TOOL_AWARE_STREAMING` | `0` | Buffer text during tool execution, show activity indicators, stream final answer cleanly |
+
+Both require `CLAUDE_OUTPUT_FORMAT=stream-json` for structured events.
+
+- **Session scanner** (`src/runtime/session-scanner.ts`): watches `~/.claude/projects/<escaped-cwd>/<session-id>.jsonl`, skips pre-existing content, degrades gracefully if the file never appears.
+- **Tool-aware queue** (`src/discord/tool-aware-queue.ts`): state machine that suppresses narration text before tools, shows human-readable activity labels (from `src/runtime/tool-labels.ts`), and streams the final answer after all tool use completes.
+- **Tool labels** (`src/runtime/tool-labels.ts`): maps tool names to labels like "Reading .../file.ts", "Running command...", etc.

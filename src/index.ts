@@ -152,6 +152,8 @@ const outputFormat = (process.env.CLAUDE_OUTPUT_FORMAT ?? 'text') === 'stream-js
 const echoStdio = (process.env.CLAUDE_ECHO_STDIO ?? '0') === '1';
 const claudeDebugFile = (process.env.CLAUDE_DEBUG_FILE ?? '').trim() || null;
 const strictMcpConfig = (process.env.CLAUDE_STRICT_MCP_CONFIG ?? '1') === '1';
+const sessionScanning = (process.env.DISCOCLAW_SESSION_SCANNING ?? '0') === '1';
+const toolAwareStreaming = (process.env.DISCOCLAW_TOOL_AWARE_STREAMING ?? '0') === '1';
 
 // Debug: surface common "works in terminal but not in systemd" issues without logging secrets.
 if ((process.env.DISCOCLAW_DEBUG_RUNTIME ?? '0') === '1') {
@@ -192,6 +194,7 @@ const runtime = createClaudeCliRuntime({
   echoStdio,
   debugFile: claudeDebugFile,
   strictMcpConfig,
+  sessionScanning,
   log,
 });
 
@@ -254,6 +257,7 @@ const { client, status } = await startDiscordBot({
   durableMaxItems,
   memoryCommandsEnabled,
   statusChannel,
+  toolAwareStreaming,
 });
 botStatus = status;
 
