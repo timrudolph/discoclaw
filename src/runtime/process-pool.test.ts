@@ -88,6 +88,54 @@ describe('ProcessPool', () => {
     expect(proc1!.state).toBe('dead');
   });
 
+  it('touching a session makes it most-recently-used (true LRU)', () => {
+    const pool = new ProcessPool({ maxProcesses: 2 });
+    const proc1 = pool.getOrSpawn('session-1', baseProcessOpts);
+    const proc2 = pool.getOrSpawn('session-2', baseProcessOpts);
+    expect(pool.size).toBe(2);
+
+    // Touch session-1 so session-2 becomes the LRU entry.
+    const proc1b = pool.getOrSpawn('session-1', baseProcessOpts);
+    expect(proc1b).toBe(proc1);
+
+    // Adding a third should evict session-2 (LRU).
+    pool.getOrSpawn('session-3', baseProcessOpts);
+    expect(pool.size).toBe(2);
+    expect(proc2!.state).toBe('dead');
+    expect(proc1!.state).not.toBe('dead');
+  });
+
+  it('does not evict busy processes; returns null when at capacity with no idle', async () => {
+    const pool = new ProcessPool({ maxProcesses: 2 });
+    const proc1 = pool.getOrSpawn('session-1', { ...baseProcessOpts, hangTimeoutMs: 60_000 });
+    const proc2 = pool.getOrSpawn('session-2', { ...baseProcessOpts, hangTimeoutMs: 60_000 });
+    expect(proc1).not.toBeNull();
+    expect(proc2).not.toBeNull();
+
+    const consume1 = (async () => {
+      for await (const _evt of proc1!.sendTurn('t1')) {
+        // drain until killAll unblocks
+      }
+    })();
+    const consume2 = (async () => {
+      for await (const _evt of proc2!.sendTurn('t2')) {
+        // drain until killAll unblocks
+      }
+    })();
+
+    expect(proc1!.state).toBe('busy');
+    expect(proc2!.state).toBe('busy');
+
+    const proc3 = pool.getOrSpawn('session-3', baseProcessOpts);
+    expect(proc3).toBeNull();
+    expect(pool.size).toBe(2);
+    expect(proc1!.state).toBe('busy');
+    expect(proc2!.state).toBe('busy');
+
+    pool.killAll();
+    await Promise.all([consume1, consume2]);
+  });
+
   it('remove kills and deletes a specific process', () => {
     const pool = new ProcessPool({ maxProcesses: 3 });
     const proc = pool.getOrSpawn('session-1', baseProcessOpts);

@@ -207,6 +207,56 @@ describe('LongRunningProcess', () => {
     expect(proc.state).toBe('dead');
   });
 
+  it('kill() while busy unblocks the consumer (emits done)', async () => {
+    const mock = createMockSubprocess();
+    (execa as any).mockReturnValue(mock.proc);
+
+    const proc = new LongRunningProcess(baseOpts);
+    proc.spawn();
+
+    const events: any[] = [];
+    const genPromise = (async () => {
+      for await (const evt of proc.sendTurn('Hello')) {
+        events.push(evt);
+      }
+    })();
+
+    queueMicrotask(() => {
+      proc.kill();
+    });
+
+    await genPromise;
+
+    expect(events.find((e) => e.type === 'done')).toBeTruthy();
+    expect(proc.state).toBe('dead');
+    expect(events.find((e) => e.type === 'error')?.message).toBe('multi-turn: terminated');
+  });
+
+  it('forceKill() while busy unblocks the consumer (emits done)', async () => {
+    const mock = createMockSubprocess();
+    (execa as any).mockReturnValue(mock.proc);
+
+    const proc = new LongRunningProcess(baseOpts);
+    proc.spawn();
+
+    const events: any[] = [];
+    const genPromise = (async () => {
+      for await (const evt of proc.sendTurn('Hello')) {
+        events.push(evt);
+      }
+    })();
+
+    queueMicrotask(() => {
+      proc.forceKill();
+    });
+
+    await genPromise;
+
+    expect(events.find((e) => e.type === 'done')).toBeTruthy();
+    expect(proc.state).toBe('dead');
+    expect(events.find((e) => e.type === 'error')?.message).toBe('multi-turn: terminated');
+  });
+
   it('sendTurn on non-idle process yields error', async () => {
     const mock = createMockSubprocess();
     (execa as any).mockReturnValue(mock.proc);

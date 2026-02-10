@@ -34,6 +34,13 @@ export class LongRunningProcess {
 
   private hangTimer: ReturnType<typeof setTimeout> | null = null;
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
+  private killAfterTimer: ReturnType<typeof setTimeout> | null = null;
+
+  private cleanupCalled = false;
+  private turnActive = false;
+  private turnEnded = false;
+
+  private stdoutOnData: ((chunk: Buffer | string) => void) | null = null;
 
   // For active turn: the queue + notify mechanism (same pattern as one-shot).
   private turnQueue: EngineEvent[] = [];
@@ -143,6 +150,8 @@ export class LongRunningProcess {
 
     this._state = 'busy';
     this.clearIdleTimer();
+    this.turnActive = true;
+    this.turnEnded = false;
 
     // Reset per-turn state.
     this.turnQueue = [];
@@ -157,6 +166,7 @@ export class LongRunningProcess {
       this.resetHangTimer();
       this.parseStdoutChunk(String(chunk));
     };
+    this.stdoutOnData = onData;
     this.subprocess!.stdout!.on('data', onData);
 
     // Start hang detection.
@@ -167,11 +177,17 @@ export class LongRunningProcess {
     try {
       this.subprocess!.stdin!.write(msg);
     } catch (err) {
-      this.subprocess!.stdout!.off('data', onData);
-      this.clearHangTimer();
-      this._state = 'dead';
-      yield { type: 'error', message: `long-running: stdin write failed: ${err}` };
-      yield { type: 'done' };
+      // Treat as a fatal termination for this turn: unblock the consumer.
+      this.terminate({
+        reason: 'stdin_write_failed',
+        signal: 'SIGKILL',
+        emitTurnError: true,
+        errorMessage: `long-running: stdin write failed: ${err}`,
+      });
+      // Drain the events we just enqueued.
+      while (this.turnQueue.length > 0) {
+        yield this.turnQueue.shift()!;
+      }
       return;
     }
 
@@ -194,8 +210,12 @@ export class LongRunningProcess {
         }
       }
     } finally {
-      this.subprocess?.stdout?.off('data', onData);
+      if (this.stdoutOnData) {
+        this.subprocess?.stdout?.off('data', this.stdoutOnData);
+        this.stdoutOnData = null;
+      }
       this.clearHangTimer();
+      this.turnActive = false;
       if (this._state === 'busy') {
         this._state = 'idle';
         this.startIdleTimer();
@@ -205,24 +225,25 @@ export class LongRunningProcess {
 
   /** Gracefully kill the subprocess. */
   kill(): void {
-    this.clearHangTimer();
-    this.clearIdleTimer();
-    this._state = 'dead';
-    try {
-      this.subprocess?.kill('SIGTERM');
-    } catch { /* ignore */ }
-    this.onCleanup?.();
+    this.terminate({
+      reason: 'kill',
+      signal: 'SIGTERM',
+      forceKillAfterMs: 5000,
+      emitTurnError: true,
+      // Avoid triggering one-shot fallback heuristics ("long-running:" / "hang detected").
+      errorMessage: 'multi-turn: terminated',
+    });
   }
 
   /** Force-kill the subprocess. */
   forceKill(): void {
-    this.clearHangTimer();
-    this.clearIdleTimer();
-    this._state = 'dead';
-    try {
-      this.subprocess?.kill('SIGKILL');
-    } catch { /* ignore */ }
-    this.onCleanup?.();
+    this.terminate({
+      reason: 'force_kill',
+      signal: 'SIGKILL',
+      emitTurnError: true,
+      // Avoid triggering one-shot fallback heuristics ("long-running:" / "hang detected").
+      errorMessage: 'multi-turn: terminated',
+    });
   }
 
   /** Get the underlying subprocess for external tracking (e.g. activeSubprocesses set). */
@@ -280,34 +301,33 @@ export class LongRunningProcess {
     const raw = this.turnResultText.trim() || (this.turnMerged.trim() ? this.turnMerged.trimEnd() : '');
     const final = stripToolUseBlocks(raw);
     if (final) this.pushEvent({ type: 'text_final', text: final });
-    this.pushEvent({ type: 'done' });
+    this.pushDoneOnce();
   }
 
   private handleExit(): void {
-    if (this._state === 'dead') return;
-    const wasBusy = this._state === 'busy';
+    const hadActiveTurn = this.turnActive && !this.turnEnded;
     this._state = 'dead';
     this.clearHangTimer();
     this.clearIdleTimer();
+    this.clearKillAfterTimer();
 
-    if (wasBusy) {
+    if (hadActiveTurn) {
       this.pushEvent({ type: 'error', message: 'long-running: process exited unexpectedly' });
-      this.pushEvent({ type: 'done' });
+      this.pushDoneOnce();
     }
-    this.onCleanup?.();
+    this.cleanupOnce();
   }
 
   private startHangTimer(): void {
     this.clearHangTimer();
     this.hangTimer = setTimeout(() => {
       this.opts.log?.info('long-running: hang detected, killing process');
-      this.pushEvent({ type: 'error', message: 'multi-turn: hang detected' });
-      this.pushEvent({ type: 'done' });
-      this._state = 'dead';
-      try {
-        this.subprocess?.kill('SIGKILL');
-      } catch { /* ignore */ }
-      this.onCleanup?.();
+      this.terminate({
+        reason: 'hang',
+        signal: 'SIGKILL',
+        emitTurnError: true,
+        errorMessage: 'multi-turn: hang detected',
+      });
     }, this.opts.hangTimeoutMs);
   }
 
@@ -327,7 +347,13 @@ export class LongRunningProcess {
     this.clearIdleTimer();
     this.idleTimer = setTimeout(() => {
       this.opts.log?.info('long-running: idle timeout, killing process');
-      this.kill();
+      // Idle kill is not a "turn failure" and should not affect consumers.
+      this.terminate({
+        reason: 'idle_timeout',
+        signal: 'SIGTERM',
+        forceKillAfterMs: 5000,
+        emitTurnError: false,
+      });
     }, this.opts.idleTimeoutMs);
   }
 
@@ -336,5 +362,71 @@ export class LongRunningProcess {
       clearTimeout(this.idleTimer);
       this.idleTimer = null;
     }
+  }
+
+  private clearKillAfterTimer(): void {
+    if (this.killAfterTimer) {
+      clearTimeout(this.killAfterTimer);
+      this.killAfterTimer = null;
+    }
+  }
+
+  private cleanupOnce(): void {
+    if (this.cleanupCalled) return;
+    this.cleanupCalled = true;
+    this.onCleanup?.();
+  }
+
+  private pushDoneOnce(): void {
+    if (this.turnEnded) return;
+    this.turnEnded = true;
+    this.pushEvent({ type: 'done' });
+  }
+
+  private terminate(opts: {
+    reason: 'hang' | 'idle_timeout' | 'kill' | 'force_kill' | 'exit' | 'stdin_write_failed';
+    signal: 'SIGTERM' | 'SIGKILL';
+    forceKillAfterMs?: number;
+    emitTurnError: boolean;
+    errorMessage?: string;
+  }): void {
+    // Idempotent: once dead and the active turn is ended, there's nothing left to do.
+    if (this._state === 'dead' && (!this.turnActive || this.turnEnded)) {
+      this.cleanupOnce();
+      return;
+    }
+
+    this.clearHangTimer();
+    this.clearIdleTimer();
+    this.clearKillAfterTimer();
+
+    if (this.stdoutOnData) {
+      this.subprocess?.stdout?.off('data', this.stdoutOnData);
+      this.stdoutOnData = null;
+    }
+
+    this._state = 'dead';
+
+    // If a consumer is blocked waiting for events, guarantee we unblock it.
+    if (this.turnActive && !this.turnEnded) {
+      if (opts.emitTurnError && opts.errorMessage) {
+        this.pushEvent({ type: 'error', message: opts.errorMessage });
+      }
+      this.pushDoneOnce();
+    }
+
+    try {
+      this.subprocess?.kill(opts.signal);
+    } catch { /* ignore */ }
+
+    if (opts.signal === 'SIGTERM' && opts.forceKillAfterMs && opts.forceKillAfterMs > 0) {
+      this.killAfterTimer = setTimeout(() => {
+        try {
+          this.subprocess?.kill('SIGKILL');
+        } catch { /* ignore */ }
+      }, opts.forceKillAfterMs);
+    }
+
+    this.cleanupOnce();
   }
 }
