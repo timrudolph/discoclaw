@@ -506,6 +506,7 @@ export function createMessageCreateHandler(params: Omit<BotParams, 'token'>, que
             cwd,
             addDirs: addDirs.length > 0 ? Array.from(new Set(addDirs)) : undefined,
             sessionId,
+            sessionKey,
             tools: effectiveTools,
             timeoutMs: params.runtimeTimeoutMs,
           })) {

@@ -15,7 +15,8 @@ export type RuntimeCapability =
   | 'tools_exec'
   | 'tools_fs'
   | 'tools_web'
-  | 'mcp';
+  | 'mcp'
+  | 'multi_turn';
 
 export type RuntimeId = 'claude_code' | 'openai' | 'gemini' | 'other';
 
@@ -24,6 +25,7 @@ export type RuntimeInvokeParams = {
   model: string;
   cwd: string;
   sessionId?: string | null;
+  sessionKey?: string | null;
   tools?: string[];
   addDirs?: string[];
   timeoutMs?: number;

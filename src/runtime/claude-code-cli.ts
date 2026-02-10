@@ -2,19 +2,26 @@ import process from 'node:process';
 import { execa, type ResultPromise } from 'execa';
 import type { EngineEvent, RuntimeAdapter, RuntimeInvokeParams } from './types.js';
 import { SessionFileScanner } from './session-scanner.js';
+import { ProcessPool } from './process-pool.js';
 
 // Track active Claude subprocesses so we can kill them on shutdown.
 const activeSubprocesses = new Set<ResultPromise>();
 
+// Track process pools so killActiveSubprocesses() can clean them up.
+const activePools = new Set<ProcessPool>();
+
 /** SIGKILL all tracked Claude subprocesses (e.g. on SIGTERM). */
 export function killActiveSubprocesses(): void {
+  for (const pool of activePools) {
+    pool.killAll();
+  }
   for (const p of activeSubprocesses) {
     p.kill('SIGKILL');
   }
   activeSubprocesses.clear();
 }
 
-function extractTextFromUnknownEvent(evt: unknown): string | null {
+export function extractTextFromUnknownEvent(evt: unknown): string | null {
   if (!evt || typeof evt !== 'object') return null;
   const anyEvt = evt as Record<string, unknown>;
 
@@ -39,7 +46,7 @@ function extractTextFromUnknownEvent(evt: unknown): string | null {
 }
 
 /** Extract the final result text from a Claude CLI stream-json "result" event. */
-function extractResultText(evt: unknown): string | null {
+export function extractResultText(evt: unknown): string | null {
   if (!evt || typeof evt !== 'object') return null;
   const anyEvt = evt as Record<string, unknown>;
   if (anyEvt.type === 'result' && typeof anyEvt.result === 'string' && anyEvt.result.length > 0) {
@@ -53,7 +60,7 @@ function extractResultText(evt: unknown): string | null {
  * When tool blocks are present, the text before/between them is narration
  * ("Let me read the files...") — we only want the text *after* the last block.
  */
-function stripToolUseBlocks(text: string): string {
+export function stripToolUseBlocks(text: string): string {
   const toolPattern = /<tool_use>[\s\S]*?<\/tool_use>|<tool_calls>[\s\S]*?<\/tool_calls>|<tool_results>[\s\S]*?<\/tool_results>|<tool_call>[\s\S]*?<\/tool_call>|<tool_result>[\s\S]*?<\/tool_result>/g;
   const segments = text.split(toolPattern);
   // If tool blocks exist, keep only the last segment (the final answer).
@@ -69,7 +76,7 @@ function* textAsChunks(text: string): Generator<EngineEvent> {
   yield { type: 'done' };
 }
 
-function tryParseJsonLine(line: string): unknown | null {
+export function tryParseJsonLine(line: string): unknown | null {
   try {
     return JSON.parse(line);
   } catch {
@@ -88,9 +95,14 @@ export type ClaudeCliRuntimeOpts = {
   // If true, pass `--strict-mcp-config` to skip slow MCP plugin init in headless contexts.
   strictMcpConfig?: boolean;
   // Optional logger for pre-invocation debug output.
-  log?: { debug(...args: unknown[]): void };
+  log?: { debug(...args: unknown[]): void; info?(...args: unknown[]): void };
   // If true, scan Claude Code's JSONL session file to emit tool_start/tool_end events.
   sessionScanning?: boolean;
+  // Multi-turn: keep long-running Claude Code processes alive per session key.
+  multiTurn?: boolean;
+  multiTurnHangTimeoutMs?: number;
+  multiTurnIdleTimeoutMs?: number;
+  multiTurnMaxProcesses?: number;
 };
 
 export function createClaudeCliRuntime(opts: ClaudeCliRuntimeOpts): RuntimeAdapter {
@@ -103,8 +115,64 @@ export function createClaudeCliRuntime(opts: ClaudeCliRuntimeOpts): RuntimeAdapt
     'tools_web',
     'mcp',
   ] as const);
+  if (opts.multiTurn) (capabilities as Set<string>).add('multi_turn');
+
+  // Multi-turn process pool (only created when feature is enabled).
+  let pool: ProcessPool | null = null;
+  if (opts.multiTurn) {
+    const logForPool = opts.log && typeof (opts.log as any).info === 'function'
+      ? opts.log as { info(...a: unknown[]): void; debug(...a: unknown[]): void }
+      : undefined;
+    pool = new ProcessPool({
+      maxProcesses: opts.multiTurnMaxProcesses ?? 5,
+      log: logForPool,
+    });
+    activePools.add(pool);
+  }
 
   async function* invoke(params: RuntimeInvokeParams): AsyncIterable<EngineEvent> {
+    // Multi-turn path: try the long-running process first.
+    if (pool && params.sessionKey) {
+      try {
+        const proc = pool.getOrSpawn(params.sessionKey, {
+          claudeBin: opts.claudeBin,
+          model: params.model,
+          cwd: params.cwd,
+          dangerouslySkipPermissions: opts.dangerouslySkipPermissions,
+          strictMcpConfig: opts.strictMcpConfig,
+          tools: params.tools,
+          addDirs: params.addDirs,
+          hangTimeoutMs: opts.multiTurnHangTimeoutMs,
+          idleTimeoutMs: opts.multiTurnIdleTimeoutMs,
+          log: pool && opts.log && typeof (opts.log as any).info === 'function'
+            ? opts.log as { info(...a: unknown[]): void; debug(...a: unknown[]): void }
+            : undefined,
+        });
+        if (proc?.isAlive) {
+          // Track the subprocess for shutdown cleanup.
+          const sub = proc.getSubprocess();
+          if (sub) activeSubprocesses.add(sub);
+
+          let hungUp = false;
+          for await (const evt of proc.sendTurn(params.prompt)) {
+            if (evt.type === 'error' && evt.message.includes('hang detected')) {
+              pool.remove(params.sessionKey);
+              hungUp = true;
+              break;
+            }
+            yield evt;
+          }
+
+          if (sub) activeSubprocesses.delete(sub);
+          if (!hungUp) return; // success via long-running process
+          // Fall through to one-shot on hang...
+        }
+      } catch (err) {
+        (opts.log as any)?.info?.({ err }, 'multi-turn: error, falling back to one-shot');
+      }
+    }
+
+    // One-shot path (existing behavior, unchanged).
     const args: string[] = ['-p', '--model', params.model];
 
     if (opts.dangerouslySkipPermissions) {

@@ -64,3 +64,27 @@ Both require `CLAUDE_OUTPUT_FORMAT=stream-json` for structured events.
 - **Session scanner** (`src/runtime/session-scanner.ts`): watches `~/.claude/projects/<escaped-cwd>/<session-id>.jsonl`, skips pre-existing content, degrades gracefully if the file never appears.
 - **Tool-aware queue** (`src/discord/tool-aware-queue.ts`): state machine that suppresses narration text before tools, shows human-readable activity labels (from `src/runtime/tool-labels.ts`), and streams the final answer after all tool use completes.
 - **Tool labels** (`src/runtime/tool-labels.ts`): maps tool names to labels like "Reading .../file.ts", "Running command...", etc.
+
+## Multi-Turn (Long-Running Process)
+
+Opt-in feature that keeps a long-running Claude Code subprocess alive per Discord session key using `--input-format stream-json`. Follow-up messages are pushed to the same process via stdin NDJSON, giving Claude Code native multi-turn context (tool results, file reads, edits persist across turns).
+
+| Env Var | Default | Purpose |
+|---------|---------|---------|
+| `DISCOCLAW_MULTI_TURN` | `0` | Enable long-running process pool |
+| `DISCOCLAW_MULTI_TURN_HANG_TIMEOUT_MS` | `60000` | Kill process if no stdout output for this long |
+| `DISCOCLAW_MULTI_TURN_IDLE_TIMEOUT_MS` | `300000` | Kill idle process after 5 min of no messages |
+| `DISCOCLAW_MULTI_TURN_MAX_PROCESSES` | `5` | Max concurrent long-running processes |
+
+Key files:
+- **Long-running process** (`src/runtime/long-running-process.ts`): manages a single subprocess with state machine (`idle` -> `busy` -> `idle` or `dead`), hang detection, idle timeout.
+- **Process pool** (`src/runtime/process-pool.ts`): pool of `LongRunningProcess` instances keyed by session key, with LRU eviction.
+
+Behavior:
+- When enabled, `invoke()` tries the long-running process first for any call with a `sessionKey`.
+- On hang detection or process crash, automatically falls back to the existing one-shot mode (unchanged).
+- On shutdown, `killActiveSubprocesses()` cleans up the pool.
+
+Known limitations:
+- GitHub issue #3187 reports that multi-turn stdin can hang after the first message. Mitigated by automatic hang detection + fallback.
+- Prompt construction is unchanged (full context sent every turn). Optimizing to skip redundant context is a follow-up.
