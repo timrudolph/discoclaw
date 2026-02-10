@@ -62,18 +62,24 @@ These session keys map to persisted UUIDs via `data/sessions.json`.
 - Discoclaw chunks long replies and attempts to keep fenced code blocks renderable across splits.
 
 ## Discord Actions
-When `DISCOCLAW_DISCORD_ACTIONS=1`, Claude can perform Discord server actions by emitting `<discord-action>` blocks in its response. After the runtime completes, Discoclaw parses these blocks, executes them via discord.js, strips the blocks from the displayed message, and appends results.
+When `DISCOCLAW_DISCORD_ACTIONS=1` (master switch), Claude can perform Discord server actions by emitting `<discord-action>` blocks in its response. After the runtime completes, Discoclaw parses these blocks, executes them via discord.js, strips the blocks from the displayed message, and appends results.
 
-Available actions:
-- `channelCreate` — Create a text channel (optionally under a category).
-- `channelList` — List all channels grouped by category.
+Each action category has its own flag (only active when the master switch is `1`):
+
+| Flag | Default | Actions |
+|------|---------|---------|
+| `DISCOCLAW_DISCORD_ACTIONS_CHANNELS` | `1` | channelCreate, channelEdit, channelDelete, channelList, channelInfo, categoryCreate |
+| `DISCOCLAW_DISCORD_ACTIONS_MESSAGING` | `0` | sendMessage, react, readMessages, fetchMessage, editMessage, deleteMessage, threadCreate, pinMessage, unpinMessage, listPins |
+| `DISCOCLAW_DISCORD_ACTIONS_GUILD` | `0` | memberInfo, roleInfo, roleAdd, roleRemove, searchMessages, eventList, eventCreate |
+| `DISCOCLAW_DISCORD_ACTIONS_MODERATION` | `0` | timeout, kick, ban |
+| `DISCOCLAW_DISCORD_ACTIONS_POLLS` | `0` | poll |
 
 Requirements:
-- The bot needs **Manage Channels** permission in the server (server-level role permission, not a Developer Portal setting).
-- This means the bot must be invited with at least the `moderator` permission profile, or have Manage Channels granted manually via Server Settings → Roles.
+- The bot needs appropriate permissions in the server (Manage Channels, Manage Roles, Moderate Members, etc.) depending on the actions used. These are server-level role permissions, not Developer Portal settings.
 - Only works in guild channels (not DMs).
-- Default off (`0`). Only allowlisted users can trigger actions.
-- If actions fail with "Missing Permissions", the bot's role lacks Manage Channels.
+- Master switch defaults to off (`0`). Only allowlisted users can trigger actions.
+- Destructive actions (delete, kick, ban, timeout) prompt Claude to confirm with the user first.
+- If actions fail with "Missing Permissions", the bot's role lacks the required permission.
 
 ## Group CWD Mode
 If `USE_GROUP_DIR_CWD=1`:

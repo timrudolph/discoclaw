@@ -38,7 +38,12 @@ Copy `.env.example` -> `.env`. See that file for inline comments.
 | `DISCORD_REQUIRE_CHANNEL_CONTEXT` | `1` | Require a per-channel context file before responding |
 | `DISCORD_AUTO_INDEX_CHANNEL_CONTEXT` | `1` | Auto-create stub context files for new channels |
 | `DISCORD_AUTO_JOIN_THREADS` | `0` | Best-effort auto-join threads so the bot can respond inside them |
-| `DISCOCLAW_DISCORD_ACTIONS` | `0` | Allow Claude to perform Discord server actions (channel create/list) |
+| `DISCOCLAW_DISCORD_ACTIONS` | `0` | Master switch for Discord server actions |
+| `DISCOCLAW_DISCORD_ACTIONS_CHANNELS` | `1` | Channel management (create/edit/delete/list/info, categoryCreate) |
+| `DISCOCLAW_DISCORD_ACTIONS_MESSAGING` | `0` | Messaging (send/edit/delete/read messages, react, threads, pins) |
+| `DISCOCLAW_DISCORD_ACTIONS_GUILD` | `0` | Guild info (memberInfo, roleInfo, roleAdd/Remove, events, search) |
+| `DISCOCLAW_DISCORD_ACTIONS_MODERATION` | `0` | Moderation (timeout, kick, ban) |
+| `DISCOCLAW_DISCORD_ACTIONS_POLLS` | `0` | Poll creation |
 
 ### Claude CLI
 | Variable | Default | Description |
