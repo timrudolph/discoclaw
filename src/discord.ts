@@ -19,6 +19,7 @@ import { parseMemoryCommand, handleMemoryCommand } from './discord/memory-comman
 import type { StatusPoster } from './discord/status-channel.js';
 import { createStatusPoster } from './discord/status-channel.js';
 import { loadWorkspacePermissions, resolveTools } from './workspace-permissions.js';
+import { ToolAwareQueue } from './discord/tool-aware-queue.js';
 
 export type BotParams = {
   token: string;
@@ -63,6 +64,7 @@ export type BotParams = {
   durableMaxItems: number;
   memoryCommandsEnabled: boolean;
   statusChannel?: string;
+  toolAwareStreaming?: boolean;
 };
 
 type QueueLike = Pick<KeyedQueue, 'run'>;
@@ -409,6 +411,7 @@ export function createMessageCreateHandler(params: Omit<BotParams, 'token'>, que
 
           let finalText = '';
           let deltaText = '';
+          let activityLabel = '';
           const t0 = Date.now();
           let lastEditAt = 0;
           const minEditIntervalMs = 1250;
@@ -418,7 +421,11 @@ export function createMessageCreateHandler(params: Omit<BotParams, 'token'>, que
             const now = Date.now();
             if (!force && now - lastEditAt < minEditIntervalMs) return;
             lastEditAt = now;
-            const out = renderDiscordTail(deltaText || finalText || '(working...)');
+            const out = deltaText
+              ? renderDiscordTail(deltaText)
+              : activityLabel
+                ? renderDiscordTail(activityLabel)
+                : renderDiscordTail(finalText || '(working...)');
             try {
               await reply.edit(out);
             } catch {
@@ -454,6 +461,28 @@ export function createMessageCreateHandler(params: Omit<BotParams, 'token'>, que
             },
             'invoke:start',
           );
+
+          // Tool-aware streaming: route events through a state machine that buffers
+          // text during tool execution and streams the final answer cleanly.
+          const taq = params.toolAwareStreaming
+            ? new ToolAwareQueue((action) => {
+                if (action.type === 'stream_text') {
+                  deltaText += action.text;
+                  // eslint-disable-next-line @typescript-eslint/no-floating-promises
+                  maybeEdit(false);
+                } else if (action.type === 'set_final') {
+                  finalText = action.text;
+                  // eslint-disable-next-line @typescript-eslint/no-floating-promises
+                  maybeEdit(true);
+                } else if (action.type === 'show_activity') {
+                  activityLabel = action.label;
+                  deltaText = '';
+                  // eslint-disable-next-line @typescript-eslint/no-floating-promises
+                  maybeEdit(true);
+                }
+              }, { flushDelayMs: 2000, postToolDelayMs: 500 })
+            : null;
+
           for await (const evt of params.runtime.invoke({
             prompt,
             model: params.runtimeModel,
@@ -463,25 +492,44 @@ export function createMessageCreateHandler(params: Omit<BotParams, 'token'>, que
             tools: effectiveTools,
             timeoutMs: params.runtimeTimeoutMs,
           })) {
-            if (evt.type === 'text_final') {
-              finalText = evt.text;
-              await maybeEdit(true);
-            } else if (evt.type === 'error') {
-              finalText = `Error: ${evt.message}`;
-              await maybeEdit(true);
-              // eslint-disable-next-line @typescript-eslint/no-floating-promises
-              statusRef?.current?.runtimeError({ sessionKey, channelName: channelCtx.channelName }, evt.message);
-            } else if (evt.type === 'text_delta') {
-              // Some runtimes never emit a final payload; keep deltas as a fallback.
-              deltaText += evt.text;
-              await maybeEdit(false);
-            } else if (evt.type === 'log_line') {
-              // Echo stderr into the streamed output when enabled by the runtime.
-              const prefix = evt.stream === 'stderr' ? '[stderr] ' : '[stdout] ';
-              deltaText += (deltaText && !deltaText.endsWith('\n') ? '\n' : '') + prefix + evt.line + '\n';
-              await maybeEdit(false);
+            if (taq) {
+              // Tool-aware mode: route relevant events through the queue.
+              if (evt.type === 'text_delta' || evt.type === 'text_final' ||
+                  evt.type === 'tool_start' || evt.type === 'tool_end') {
+                taq.handleEvent(evt);
+              } else if (evt.type === 'error') {
+                taq.handleEvent(evt);
+                finalText = `Error: ${evt.message}`;
+                await maybeEdit(true);
+                // eslint-disable-next-line @typescript-eslint/no-floating-promises
+                statusRef?.current?.runtimeError({ sessionKey, channelName: channelCtx.channelName }, evt.message);
+              } else if (evt.type === 'log_line') {
+                // Bypass queue for log lines.
+                const prefix = evt.stream === 'stderr' ? '[stderr] ' : '[stdout] ';
+                deltaText += (deltaText && !deltaText.endsWith('\n') ? '\n' : '') + prefix + evt.line + '\n';
+                await maybeEdit(false);
+              }
+            } else {
+              // Flat mode: existing behavior unchanged.
+              if (evt.type === 'text_final') {
+                finalText = evt.text;
+                await maybeEdit(true);
+              } else if (evt.type === 'error') {
+                finalText = `Error: ${evt.message}`;
+                await maybeEdit(true);
+                // eslint-disable-next-line @typescript-eslint/no-floating-promises
+                statusRef?.current?.runtimeError({ sessionKey, channelName: channelCtx.channelName }, evt.message);
+              } else if (evt.type === 'text_delta') {
+                deltaText += evt.text;
+                await maybeEdit(false);
+              } else if (evt.type === 'log_line') {
+                const prefix = evt.stream === 'stderr' ? '[stderr] ' : '[stdout] ';
+                deltaText += (deltaText && !deltaText.endsWith('\n') ? '\n' : '') + prefix + evt.line + '\n';
+                await maybeEdit(false);
+              }
             }
           }
+          taq?.dispose();
           params.log?.info({ sessionKey, sessionId, ms: Date.now() - t0 }, 'invoke:end');
           clearInterval(keepalive);
 
