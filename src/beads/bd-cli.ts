@@ -40,6 +40,23 @@ export function parseBdJson<T = BeadData>(stdout: string): T[] {
 }
 
 // ---------------------------------------------------------------------------
+// Pre-flight check
+// ---------------------------------------------------------------------------
+
+/** Check whether the bd CLI binary is available. */
+export async function checkBdAvailable(): Promise<{ available: boolean; version?: string }> {
+  try {
+    const result = await execa(BD_BIN, ['--version'], { reject: false });
+    if (result.exitCode === 0) {
+      return { available: true, version: result.stdout.trim() || undefined };
+    }
+    return { available: false };
+  } catch {
+    return { available: false };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // bd CLI wrappers
 // ---------------------------------------------------------------------------
 

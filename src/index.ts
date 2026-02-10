@@ -17,6 +17,7 @@ import { initCronForum } from './cron/forum-sync.js';
 import type { ActionCategoryFlags } from './discord/actions.js';
 import type { BeadContext } from './discord/actions-beads.js';
 import { loadTagMap } from './beads/discord-sync.js';
+import { checkBdAvailable } from './beads/bd-cli.js';
 import { ensureWorkspaceBootstrapFiles } from './workspace-bootstrap.js';
 
 const log = pino({ level: process.env.LOG_LEVEL ?? 'info' });
@@ -213,18 +214,28 @@ const sessionManager = new SessionManager(path.join(__dirname, '..', 'data', 'se
 // --- Build BeadContext if beads enabled ---
 let beadCtx: BeadContext | undefined;
 if (beadsEnabled && beadsForum) {
-  const tagMap = await loadTagMap(beadsTagMapPath);
-  beadCtx = {
-    beadsCwd,
-    forumId: beadsForum,
-    tagMap,
-    runtime,
-    autoTag: beadsAutoTag,
-    autoTagModel: beadsAutoTagModel,
-    mentionUserId: beadsMentionUser,
-    log,
-  };
-  log.info({ beadsCwd, beadsForum, tagCount: Object.keys(tagMap).length, autoTag: beadsAutoTag }, 'beads:initialized');
+  const bd = await checkBdAvailable();
+  if (!bd.available) {
+    log.warn(
+      'DISCOCLAW_BEADS_ENABLED=1 but the bd CLI was not found. ' +
+      'Beads is a task-tracking system that syncs with Discord forum threads. ' +
+      'It requires the `bd` binary (set BD_BIN to a custom path if needed). ' +
+      'Beads subsystem disabled.',
+    );
+  } else {
+    const tagMap = await loadTagMap(beadsTagMapPath);
+    beadCtx = {
+      beadsCwd,
+      forumId: beadsForum,
+      tagMap,
+      runtime,
+      autoTag: beadsAutoTag,
+      autoTagModel: beadsAutoTagModel,
+      mentionUserId: beadsMentionUser,
+      log,
+    };
+    log.info({ beadsCwd, beadsForum, tagCount: Object.keys(tagMap).length, autoTag: beadsAutoTag, bdVersion: bd.version }, 'beads:initialized');
+  }
 } else if (beadsEnabled && !beadsForum) {
   log.warn('DISCOCLAW_BEADS_ENABLED=1 but DISCOCLAW_BEADS_FORUM is not set; beads subsystem disabled');
 }

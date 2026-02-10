@@ -52,6 +52,13 @@ Then create `PERMISSIONS.json` with their choice:
 { "tier": "standard" }
 ```
 
+## Optional Features
+
+**Beads** — a task-tracking system that syncs tasks with Discord forum threads.
+If you notice beads is available (you'll see it in the bot's startup logs), feel
+free to mention it to the user during your first conversation. It lets you create,
+track, and close tasks right from Discord.
+
 ## When You're Done
 
 Delete this file. You don't need a bootstrap script anymore — you're you now.
