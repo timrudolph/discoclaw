@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import fs from 'node:fs/promises';
 
 import { createClaudeCliRuntime, killActiveSubprocesses } from './runtime/claude-code-cli.js';
+import { withConcurrencyLimit } from './runtime/concurrency-limit.js';
 import { SessionManager } from './sessions.js';
 import { parseAllowChannelIds, parseAllowUserIds } from './discord/allowlist.js';
 import { loadDiscordChannelContext } from './discord/channel-context.js';
@@ -163,6 +164,7 @@ const multiTurn = (process.env.DISCOCLAW_MULTI_TURN ?? '1') === '1';
 const multiTurnHangTimeoutMs = Math.max(1, Number(process.env.DISCOCLAW_MULTI_TURN_HANG_TIMEOUT_MS ?? '60000'));
 const multiTurnIdleTimeoutMs = Math.max(1, Number(process.env.DISCOCLAW_MULTI_TURN_IDLE_TIMEOUT_MS ?? '300000'));
 const multiTurnMaxProcesses = Math.max(1, Number(process.env.DISCOCLAW_MULTI_TURN_MAX_PROCESSES ?? '5'));
+const maxConcurrentInvocations = Math.max(0, Number(process.env.DISCOCLAW_MAX_CONCURRENT_INVOCATIONS ?? '0'));
 
 // Debug: surface common "works in terminal but not in systemd" issues without logging secrets.
 if ((process.env.DISCOCLAW_DEBUG_RUNTIME ?? '0') === '1') {
@@ -190,6 +192,7 @@ if ((process.env.DISCOCLAW_DEBUG_RUNTIME ?? '0') === '1') {
         workspaceCwd,
         groupsDir,
         useRuntimeSessions,
+        maxConcurrentInvocations,
       },
     },
     'debug:runtime config',
@@ -210,6 +213,7 @@ const runtime = createClaudeCliRuntime({
   multiTurnIdleTimeoutMs,
   multiTurnMaxProcesses,
 });
+const limitedRuntime = withConcurrencyLimit(runtime, { maxConcurrentInvocations, log });
 
 const sessionManager = new SessionManager(path.join(__dirname, '..', 'data', 'sessions.json'));
 
@@ -233,7 +237,7 @@ const botParams = {
   autoIndexChannelContext,
   autoJoinThreads,
   useRuntimeSessions,
-  runtime,
+  runtime: limitedRuntime,
   sessionManager,
   workspaceCwd,
   groupsDir,

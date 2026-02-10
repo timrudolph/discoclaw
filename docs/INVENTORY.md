@@ -133,6 +133,7 @@ All actions are gated by category env flags (off by default except channels).
 | Project instructions | `CLAUDE.md` | **done** |
 | Philosophy | `docs/philosophy.md` | **done** |
 | Bot setup guide | `docs/discord-bot-setup.md` | **done** |
+| Discord actions | `docs/discord-actions.md` | **done** |
 | Context modules | `.context/*.md` | **done** |
 | This inventory | `docs/INVENTORY.md` | **done** |
 | README for new users | `README.md` | *needs rewrite for MVP audience* |
