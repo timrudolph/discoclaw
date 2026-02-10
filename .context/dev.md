@@ -68,6 +68,11 @@ Copy `.env.example` -> `.env`. See that file for inline comments.
 | `RUNTIME_TOOLS` | `Bash,Read,Edit,WebSearch,WebFetch` | Comma-separated tool list |
 | `RUNTIME_TIMEOUT_MS` | `600000` | Per-invocation timeout in milliseconds |
 | `DISCOCLAW_RUNTIME_SESSIONS` | `1` | Persist Claude session IDs across messages |
+| `DISCOCLAW_MESSAGE_HISTORY_BUDGET` | `3000` | Char budget for recent conversation history in prompts (0 = disabled) |
+| `DISCOCLAW_SUMMARY_ENABLED` | `1` | Enable rolling conversation summaries (Haiku-generated) |
+| `DISCOCLAW_SUMMARY_MODEL` | `haiku` | Model used for summarization |
+| `DISCOCLAW_SUMMARY_MAX_CHARS` | `2000` | Max chars for the rolling summary text |
+| `DISCOCLAW_SUMMARY_EVERY_N_TURNS` | `5` | Re-summarize every N messages per session |
 
 ## Notes
 - Runtime invocation defaults are configurable via env (`RUNTIME_MODEL`, `RUNTIME_TOOLS`, `RUNTIME_TIMEOUT_MS`).

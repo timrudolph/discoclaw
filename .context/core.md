@@ -24,6 +24,7 @@
 ## State Files
 - `data/sessions.json` (gitignored) — sessionKey -> UUID mapping
 - `data/discoclaw.pid` (gitignored) — PID lock file preventing duplicate instances (auto-cleaned on SIGTERM/SIGINT; stale locks from SIGKILL are detected and overwritten on next startup)
+- `data/memory/rolling/<session-key>.json` (gitignored) — rolling conversation summaries per session
 - `groups/<sessionKey>/CLAUDE.md` — bootstrapped per-group instructions when group cwd is enabled
 
 ## External Workspace (Important)

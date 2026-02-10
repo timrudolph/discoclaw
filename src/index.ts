@@ -81,6 +81,13 @@ const autoIndexChannelContext = (process.env.DISCORD_AUTO_INDEX_CHANNEL_CONTEXT 
 const autoJoinThreads = (process.env.DISCORD_AUTO_JOIN_THREADS ?? '0') === '1';
 const useRuntimeSessions = (process.env.DISCOCLAW_RUNTIME_SESSIONS ?? '1') === '1';
 const discordActionsEnabled = (process.env.DISCOCLAW_DISCORD_ACTIONS ?? '0') === '1';
+const messageHistoryBudget = Math.max(0, Number(process.env.DISCOCLAW_MESSAGE_HISTORY_BUDGET ?? '3000'));
+const summaryEnabled = (process.env.DISCOCLAW_SUMMARY_ENABLED ?? '1') === '1';
+const summaryModel = (process.env.DISCOCLAW_SUMMARY_MODEL ?? 'haiku').trim() || 'haiku';
+const summaryMaxChars = Math.max(0, Number(process.env.DISCOCLAW_SUMMARY_MAX_CHARS ?? '2000'));
+const summaryEveryNTurns = Math.max(1, Number(process.env.DISCOCLAW_SUMMARY_EVERY_N_TURNS ?? '5'));
+const summaryDataDir = (process.env.DISCOCLAW_SUMMARY_DATA_DIR ?? '').trim()
+  || (dataDir ? path.join(dataDir, 'memory', 'rolling') : path.join(__dirname, '..', 'data', 'memory', 'rolling'));
 if (requireChannelContext && !discordChannelContext) {
   log.error({ contentDir }, 'DISCORD_REQUIRE_CHANNEL_CONTEXT=1 but channel context failed to initialize');
   process.exit(1);
@@ -166,6 +173,12 @@ await startDiscordBot({
   runtimeTools,
   runtimeTimeoutMs,
   discordActionsEnabled,
+  messageHistoryBudget,
+  summaryEnabled,
+  summaryModel,
+  summaryMaxChars,
+  summaryEveryNTurns,
+  summaryDataDir,
 });
 
 log.info('Discord bot started');

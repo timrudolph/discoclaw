@@ -26,6 +26,12 @@ describe('Discord handler (fail closed)', () => {
       autoJoinThreads: false,
       useRuntimeSessions: true,
       discordActionsEnabled: false,
+      messageHistoryBudget: 0,
+      summaryEnabled: false,
+      summaryModel: 'haiku',
+      summaryMaxChars: 2000,
+      summaryEveryNTurns: 5,
+      summaryDataDir: '/tmp/summaries',
     }, queue);
 
     const msg = {
@@ -61,6 +67,12 @@ describe('Discord handler (fail closed)', () => {
       autoJoinThreads: false,
       useRuntimeSessions: true,
       discordActionsEnabled: false,
+      messageHistoryBudget: 0,
+      summaryEnabled: false,
+      summaryModel: 'haiku',
+      summaryMaxChars: 2000,
+      summaryEveryNTurns: 5,
+      summaryDataDir: '/tmp/summaries',
     }, queue);
 
     const msg = {

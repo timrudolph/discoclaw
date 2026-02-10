@@ -60,6 +60,12 @@ describe('prompt includes correct context file paths', () => {
       useRuntimeSessions: true,
       discordChannelContext: discordChannelContext as any,
       discordActionsEnabled: false,
+      messageHistoryBudget: 0,
+      summaryEnabled: false,
+      summaryModel: 'haiku',
+      summaryMaxChars: 2000,
+      summaryEveryNTurns: 5,
+      summaryDataDir: '/tmp/summaries',
     }, queue);
 
     await handler(makeMsg({ channelId: 'chan' }));
@@ -109,6 +115,12 @@ describe('prompt includes correct context file paths', () => {
       useRuntimeSessions: true,
       discordChannelContext: discordChannelContext as any,
       discordActionsEnabled: false,
+      messageHistoryBudget: 0,
+      summaryEnabled: false,
+      summaryModel: 'haiku',
+      summaryMaxChars: 2000,
+      summaryEveryNTurns: 5,
+      summaryDataDir: '/tmp/summaries',
     }, queue);
 
     await handler(makeMsg({
@@ -158,6 +170,12 @@ describe('prompt includes correct context file paths', () => {
       useRuntimeSessions: true,
       discordChannelContext: discordChannelContext as any,
       discordActionsEnabled: false,
+      messageHistoryBudget: 0,
+      summaryEnabled: false,
+      summaryModel: 'haiku',
+      summaryMaxChars: 2000,
+      summaryEveryNTurns: 5,
+      summaryDataDir: '/tmp/summaries',
     }, queue);
 
     await handler(makeMsg({ guildId: null, channelId: 'dmchan' }));

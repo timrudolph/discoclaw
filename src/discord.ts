@@ -9,6 +9,8 @@ import type { DiscordChannelContext } from './discord/channel-context.js';
 import { ensureIndexedDiscordChannelContext, resolveDiscordChannelContext } from './discord/channel-context.js';
 import { discordSessionKey } from './discord/session-key.js';
 import { parseDiscordActions, executeDiscordActions, discordActionsPromptSection } from './discord/actions.js';
+import { fetchMessageHistory } from './discord/message-history.js';
+import { loadSummary, saveSummary, generateSummary } from './discord/summarizer.js';
 
 type LoggerLike = {
   info(obj: unknown, msg?: string): void;
@@ -40,9 +42,17 @@ export type BotParams = {
   runtimeTools: string[];
   runtimeTimeoutMs: number;
   discordActionsEnabled: boolean;
+  messageHistoryBudget: number;
+  summaryEnabled: boolean;
+  summaryModel: string;
+  summaryMaxChars: number;
+  summaryEveryNTurns: number;
+  summaryDataDir: string;
 };
 
 type QueueLike = Pick<KeyedQueue, 'run'>;
+
+const turnCounters = new Map<string, number>();
 
 function groupDirNameFromSessionKey(sessionKey: string): string {
   // Keep it filesystem-safe and easy to inspect.
@@ -215,6 +225,9 @@ export function createMessageCreateHandler(params: Omit<BotParams, 'token'>, que
         threadId: threadId || null,
       });
 
+      type SummaryWork = { existingSummary: string | null; exchange: string };
+      let pendingSummaryWork: SummaryWork | null = null as SummaryWork | null;
+
       await queue.run(sessionKey, async () => {
         let reply: any = null;
         try {
@@ -279,10 +292,39 @@ export function createMessageCreateHandler(params: Omit<BotParams, 'token'>, que
           }
           if (channelCtx.contextPath) contextFiles.push(channelCtx.contextPath);
 
+          let historySection = '';
+          if (params.messageHistoryBudget > 0) {
+            try {
+              historySection = await fetchMessageHistory(
+                msg.channel,
+                msg.id,
+                { budgetChars: params.messageHistoryBudget },
+              );
+            } catch (err) {
+              params.log?.warn({ err }, 'discord:history fetch failed');
+            }
+          }
+
+          let summarySection = '';
+          if (params.summaryEnabled) {
+            try {
+              const existing = await loadSummary(params.summaryDataDir, sessionKey);
+              if (existing) summarySection = existing.summary;
+            } catch (err) {
+              params.log?.warn({ err, sessionKey }, 'discord:summary load failed');
+            }
+          }
+
           let prompt =
             `Context files (read with Read tool before responding, in order):\n` +
             contextFiles.map((p) => `- ${p}`).join('\n') +
-            `\n\n---\nUser message:\n` +
+            (summarySection
+              ? `\n\n---\nConversation memory:\n${summarySection}\n`
+              : '') +
+            (historySection
+              ? `\n\n---\nRecent conversation:\n${historySection}\n`
+              : '\n') +
+            `\n---\nUser message:\n` +
             String(msg.content ?? '');
 
           if (params.discordActionsEnabled && !isDm) {
@@ -379,6 +421,22 @@ export function createMessageCreateHandler(params: Omit<BotParams, 'token'>, que
           for (const extra of chunks.slice(1)) {
             await msg.channel.send(extra);
           }
+
+          if (params.summaryEnabled) {
+            const count = (turnCounters.get(sessionKey) ?? 0) + 1;
+            turnCounters.set(sessionKey, count);
+
+            if (count >= params.summaryEveryNTurns) {
+              turnCounters.set(sessionKey, 0);
+              pendingSummaryWork = {
+                existingSummary: summarySection || null,
+                exchange:
+                  (historySection ? historySection + '\n' : '') +
+                  `[${msg.author.displayName || msg.author.username}]: ${msg.content}\n` +
+                  `[Discoclaw]: ${(processedText || '').slice(0, 500)}`,
+              };
+            }
+          }
         } catch (err) {
           params.log?.error({ err, sessionKey }, 'discord:handler failed');
           try {
@@ -388,6 +446,30 @@ export function createMessageCreateHandler(params: Omit<BotParams, 'token'>, que
           }
         }
       });
+
+      // Fire-and-forget: run summary generation outside the queue so it doesn't
+      // block the next message for this session key (Haiku can take several seconds).
+      if (pendingSummaryWork) {
+        const work = pendingSummaryWork;
+        // eslint-disable-next-line @typescript-eslint/no-floating-promises
+        generateSummary(params.runtime, {
+          previousSummary: work.existingSummary,
+          recentExchange: work.exchange,
+          model: params.summaryModel,
+          cwd: params.workspaceCwd,
+          maxChars: params.summaryMaxChars,
+          timeoutMs: 30_000,
+        })
+          .then((newSummary) =>
+            saveSummary(params.summaryDataDir, sessionKey, {
+              summary: newSummary,
+              updatedAt: Date.now(),
+            }),
+          )
+          .catch((err) => {
+            params.log?.warn({ err, sessionKey }, 'discord:summary generation failed');
+          });
+      }
     } catch (err) {
       params.log?.error({ err }, 'discord:messageCreate failed');
     }
