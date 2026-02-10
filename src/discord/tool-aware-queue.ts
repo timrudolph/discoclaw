@@ -17,6 +17,7 @@ export class ToolAwareQueue {
   private state: State = 'idle';
   private buffer = '';
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
+  private disposed = false;
   private readonly emit: (action: DisplayAction) => void;
   private readonly flushDelayMs: number;
   private readonly postToolDelayMs: number;
@@ -28,6 +29,7 @@ export class ToolAwareQueue {
   }
 
   handleEvent(evt: EngineEvent): void {
+    if (this.disposed) return;
     switch (evt.type) {
       case 'text_delta':
         this.onTextDelta(evt.text);
@@ -49,6 +51,7 @@ export class ToolAwareQueue {
   }
 
   dispose(): void {
+    this.disposed = true;
     this.cancelTimer();
   }
 
@@ -119,7 +122,7 @@ export class ToolAwareQueue {
   }
 
   private flush(): void {
-    if (this.state !== 'buffering_text') return;
+    if (this.disposed || this.state !== 'buffering_text') return;
     this.state = 'streaming_final';
     if (this.buffer) {
       this.emit({ type: 'stream_text', text: this.buffer });

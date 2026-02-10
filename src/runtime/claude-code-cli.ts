@@ -194,7 +194,7 @@ export function createClaudeCliRuntime(opts: ClaudeCliRuntimeOpts): RuntimeAdapt
         { onEvent: push },
       );
       // Fire-and-forget: scanner degrades gracefully if file never appears.
-      scanner.start().catch(() => {});
+      scanner.start().catch((err) => opts.log?.debug({ err }, 'session-scanner: start failed'));
     }
 
     let mergedStdout = '';
@@ -275,8 +275,6 @@ export function createClaudeCliRuntime(opts: ClaudeCliRuntimeOpts): RuntimeAdapt
       if (!procResult) return;
       if (!stdoutEnded) return;
       if (!stderrEnded) return;
-
-      scanner?.stop();
 
       const exitCode = procResult.exitCode;
       const stdout = procResult.stdout ?? '';
@@ -374,11 +372,15 @@ export function createClaudeCliRuntime(opts: ClaudeCliRuntimeOpts): RuntimeAdapt
       wake();
     });
 
-    while (!finished || q.length > 0) {
-      if (q.length === 0) await wait();
-      while (q.length > 0) {
-        yield q.shift()!;
+    try {
+      while (!finished || q.length > 0) {
+        if (q.length === 0) await wait();
+        while (q.length > 0) {
+          yield q.shift()!;
+        }
       }
+    } finally {
+      scanner?.stop();
     }
   }
 

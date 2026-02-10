@@ -41,6 +41,7 @@ export class SessionFileScanner {
   private watcher: fs.FSWatcher | null = null;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private stopped = false;
+  private reading = false;
 
   constructor(opts: SessionScannerOpts, callbacks: SessionScannerCallbacks) {
     this.filePath = sessionFilePath(opts.sessionId, opts.cwd);
@@ -121,7 +122,8 @@ export class SessionFileScanner {
   }
 
   private readNewBytes(): void {
-    if (this.stopped) return;
+    if (this.stopped || this.reading) return;
+    this.reading = true;
 
     let fd: number | null = null;
     try {
@@ -154,6 +156,8 @@ export class SessionFileScanner {
       if (fd !== null) {
         try { fs.closeSync(fd); } catch { /* ignore */ }
       }
+    } finally {
+      this.reading = false;
     }
   }
 
@@ -162,6 +166,7 @@ export class SessionFileScanner {
     try {
       parsed = JSON.parse(line);
     } catch {
+      this.log?.debug('session-scanner: parse error', line.slice(0, 200));
       return;
     }
 
