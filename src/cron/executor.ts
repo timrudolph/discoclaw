@@ -111,7 +111,8 @@ export async function executeCronJob(job: CronJob, ctx: CronExecutorContext): Pr
     const prompt =
       `You are executing a scheduled cron job named "${job.name}".\n\n` +
       `Instruction: ${job.def.prompt}\n\n` +
-      `Post your response to the Discord channel #${job.def.channel}. ` +
+      `Your output will be posted automatically to the Discord channel #${job.def.channel}. ` +
+      `Do NOT explain how to post or suggest using bots/webhooks — just write the message content directly. ` +
       `Keep your response concise and focused on the instruction above.`;
 
     const tools = await resolveEffectiveTools({
@@ -153,6 +154,7 @@ export async function executeCronJob(job: CronJob, ctx: CronExecutorContext): Pr
       prompt,
       model: effectiveModel,
       cwd: ctx.cwd,
+      addDirs: [ctx.cwd],
       timeoutMs: ctx.timeoutMs,
       tools: effectiveTools,
     })) {
