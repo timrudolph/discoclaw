@@ -108,6 +108,7 @@ export type BotParams = {
   botActivity?: string;
   botActivityType?: 'Playing' | 'Listening' | 'Watching' | 'Competing' | 'Custom';
   botAvatar?: string;
+  appendSystemPrompt?: string;
 };
 
 type QueueLike = Pick<KeyedQueue, 'run'> & { size?: () => number };
@@ -355,7 +356,7 @@ export function createMessageCreateHandler(params: Omit<BotParams, 'token'>, que
             return;
           }
 
-          const paFiles = await loadWorkspacePaFiles(params.workspaceCwd);
+          const paFiles = await loadWorkspacePaFiles(params.workspaceCwd, { skip: !!params.appendSystemPrompt });
           const memoryFiles: string[] = [];
           if (isDm) {
             const memFile = await loadWorkspaceMemoryFile(params.workspaceCwd);

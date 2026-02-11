@@ -165,7 +165,7 @@ function createReactionHandler(
             return;
           }
 
-          const paFiles = await loadWorkspacePaFiles(params.workspaceCwd);
+          const paFiles = await loadWorkspacePaFiles(params.workspaceCwd, { skip: !!params.appendSystemPrompt });
           const contextFiles = buildContextFiles(paFiles, params.discordChannelContext, channelCtx.contextPath);
           const [durableSection, beadSection] = await Promise.all([
             buildDurableMemorySection({

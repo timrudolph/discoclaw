@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import pino from 'pino';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import fs from 'node:fs/promises';
 
@@ -211,6 +212,10 @@ const beadsAutoTag = cfg.beadsAutoTag;
 const beadsAutoTagModel = cfg.beadsAutoTagModel;
 const discordActionsBeads = cfg.discordActionsBeads;
 
+const runtimeFallbackModel = cfg.runtimeFallbackModel;
+const runtimeMaxBudgetUsd = cfg.runtimeMaxBudgetUsd;
+const appendSystemPrompt = cfg.appendSystemPrompt;
+
 const claudeBin = cfg.claudeBin;
 const dangerouslySkipPermissions = cfg.dangerouslySkipPermissions;
 const outputFormat = cfg.outputFormat;
@@ -224,6 +229,35 @@ const multiTurnHangTimeoutMs = cfg.multiTurnHangTimeoutMs;
 const multiTurnIdleTimeoutMs = cfg.multiTurnIdleTimeoutMs;
 const multiTurnMaxProcesses = cfg.multiTurnMaxProcesses;
 const maxConcurrentInvocations = cfg.maxConcurrentInvocations;
+
+// --- CLI version check: require >= 2.1.0 for new tools/flags ---
+const MIN_CLAUDE_CLI_VERSION = '2.1.0';
+try {
+  const versionOutput = execFileSync(claudeBin, ['--version'], { encoding: 'utf8', timeout: 10_000 }).trim();
+  const match = versionOutput.match(/(\d+)\.(\d+)\.(\d+)/);
+  if (match) {
+    const current = [Number(match[1]), Number(match[2]), Number(match[3])] as const;
+    const minimum = MIN_CLAUDE_CLI_VERSION.split('.').map(Number) as [number, number, number];
+    let belowMinimum = false;
+    for (let i = 0; i < 3; i++) {
+      if (current[i] > minimum[i]) break;
+      if (current[i] < minimum[i]) { belowMinimum = true; break; }
+    }
+    if (belowMinimum) {
+      log.error(
+        { version: current.join('.'), minimum: MIN_CLAUDE_CLI_VERSION },
+        `Claude CLI >= ${MIN_CLAUDE_CLI_VERSION} required for Glob/Grep/Write tools and --fallback-model/--max-budget-usd/--append-system-prompt flags. Run: claude update`,
+      );
+      process.exit(1);
+    }
+    log.info({ claudeCliVersion: current.join('.') }, 'Claude CLI version check passed');
+  } else {
+    log.warn({ raw: versionOutput.slice(0, 100) }, 'Could not parse Claude CLI version (continuing)');
+  }
+} catch (err) {
+  log.error({ err, claudeBin }, 'Failed to check Claude CLI version — is the CLI installed?');
+  process.exit(1);
+}
 
 // Debug: surface common "works in terminal but not in systemd" issues without logging secrets.
 if (cfg.debugRuntime) {
@@ -265,6 +299,9 @@ const runtime = createClaudeCliRuntime({
   echoStdio,
   debugFile: claudeDebugFile,
   strictMcpConfig,
+  fallbackModel: runtimeFallbackModel,
+  maxBudgetUsd: runtimeMaxBudgetUsd,
+  appendSystemPrompt,
   sessionScanning,
   log,
   multiTurn,
@@ -374,6 +411,7 @@ const botParams = {
     autoIndexChannelContext,
   },
   metrics: globalMetrics,
+  appendSystemPrompt,
 };
 
 const { client, status, system } = await startDiscordBot(botParams);
@@ -420,7 +458,7 @@ if (beadCtx) {
         beadForum.id,
         async () => {
           const all = await bdList({ status: 'all' }, beadsCwd);
-          return all.filter(b => b.status !== 'closed' && b.status !== 'done' && b.status !== 'tombstone').length;
+          return all.filter(b => b.status !== 'closed').length;
         },
         log,
       );

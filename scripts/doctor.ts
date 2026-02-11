@@ -7,7 +7,7 @@
  */
 
 import 'dotenv/config';
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -27,7 +27,7 @@ function fail(label: string, hint?: string) {
 
 function which(bin: string): string | null {
   try {
-    return execSync(`which ${bin}`, { encoding: 'utf8' }).trim();
+    return execFileSync('which', [bin], { encoding: 'utf8' }).trim();
   } catch {
     return null;
   }
@@ -35,10 +35,26 @@ function which(bin: string): string | null {
 
 function versionOf(bin: string): string | null {
   try {
-    return execSync(`${bin} --version`, { encoding: 'utf8' }).trim().split('\n')[0];
+    return execFileSync(bin, ['--version'], { encoding: 'utf8' }).trim().split('\n')[0];
   } catch {
     return null;
   }
+}
+
+const MIN_CLAUDE_VERSION = '2.1.0';
+
+function parseSemver(versionStr: string): [number, number, number] | null {
+  const match = versionStr.match(/(\d+)\.(\d+)\.(\d+)/);
+  if (!match) return null;
+  return [Number(match[1]), Number(match[2]), Number(match[3])];
+}
+
+function isVersionAtLeast(current: [number, number, number], minimum: [number, number, number]): boolean {
+  for (let i = 0; i < 3; i++) {
+    if (current[i] > minimum[i]) return true;
+    if (current[i] < minimum[i]) return false;
+  }
+  return true; // equal
 }
 
 console.log('\nDiscoclaw preflight check\n');
@@ -66,6 +82,24 @@ const claudePath = which(claudeBin);
 if (claudePath) {
   const claudeVersion = versionOf(claudeBin);
   ok(`Claude CLI: ${claudeVersion ?? claudePath}`);
+
+  // Version check: require >= MIN_CLAUDE_VERSION for new tools and flags.
+  if (claudeVersion) {
+    const parsed = parseSemver(claudeVersion);
+    const minParsed = parseSemver(MIN_CLAUDE_VERSION)!;
+    if (parsed) {
+      if (isVersionAtLeast(parsed, minParsed)) {
+        ok(`Claude CLI version >= ${MIN_CLAUDE_VERSION}`);
+      } else {
+        fail(
+          `Claude CLI version ${parsed.join('.')} < ${MIN_CLAUDE_VERSION}`,
+          `Glob/Grep/Write tools and --fallback-model/--max-budget-usd/--append-system-prompt flags require >= ${MIN_CLAUDE_VERSION}. Run: claude update`,
+        );
+      }
+    } else {
+      console.log(`  ℹ Could not parse Claude CLI version from "${claudeVersion}" (forward-compat: continuing)`);
+    }
+  }
 } else {
   fail(`Claude CLI not found (looked for "${claudeBin}")`, 'Install from https://docs.anthropic.com/en/docs/claude-code');
 }
@@ -82,7 +116,7 @@ if (bdPath) {
 // 4. Pre-push hook (informational)
 const hooksDir = (() => {
   try {
-    return execSync('git config --get core.hooksPath', { encoding: 'utf8' }).trim();
+    return execFileSync('git', ['config', '--get', 'core.hooksPath'], { encoding: 'utf8' }).trim();
   } catch {
     return path.join(root, '.git', 'hooks');
   }

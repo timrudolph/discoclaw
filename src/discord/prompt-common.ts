@@ -9,7 +9,11 @@ import type { BeadData } from '../beads/types.js';
 import type { BeadContext } from './actions-beads.js';
 import { beadThreadCache } from '../beads/bead-thread-cache.js';
 
-export async function loadWorkspacePaFiles(workspaceCwd: string): Promise<string[]> {
+export async function loadWorkspacePaFiles(
+  workspaceCwd: string,
+  opts?: { skip?: boolean },
+): Promise<string[]> {
+  if (opts?.skip) return [];
   const paFileNames = ['SOUL.md', 'IDENTITY.md', 'USER.md', 'TOOLS.md'];
   const bootstrapPath = path.join(workspaceCwd, 'BOOTSTRAP.md');
   const paFiles: string[] = [];
