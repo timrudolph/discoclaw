@@ -17,9 +17,12 @@ import { executeCronJob } from './cron/executor.js';
 import { initCronForum } from './cron/forum-sync.js';
 import type { ActionCategoryFlags } from './discord/actions.js';
 import type { BeadContext } from './discord/actions-beads.js';
+import type { CronContext } from './discord/actions-crons.js';
 import { loadTagMap } from './beads/discord-sync.js';
 import { checkBdAvailable } from './beads/bd-cli.js';
 import { ensureWorkspaceBootstrapFiles } from './workspace-bootstrap.js';
+import { loadRunStats } from './cron/run-stats.js';
+import { seedTagMap } from './cron/discord-sync.js';
 
 const log = pino({ level: process.env.LOG_LEVEL ?? 'info' });
 
@@ -122,6 +125,14 @@ const guildId = (process.env.DISCORD_GUILD_ID ?? '').trim() || undefined;
 const cronEnabled = (process.env.DISCOCLAW_CRON_ENABLED ?? '0') === '1';
 const cronForum = (process.env.DISCOCLAW_CRON_FORUM ?? '').trim() || undefined;
 const cronModel = (process.env.DISCOCLAW_CRON_MODEL ?? 'haiku').trim() || 'haiku';
+const discordActionsCrons = (process.env.DISCOCLAW_DISCORD_ACTIONS_CRONS ?? '0') === '1';
+const cronAutoTag = (process.env.DISCOCLAW_CRON_AUTO_TAG ?? '0') === '1';
+const cronAutoTagModel = (process.env.DISCOCLAW_CRON_AUTO_TAG_MODEL ?? 'haiku').trim() || 'haiku';
+const cronStatsDir = (process.env.DISCOCLAW_CRON_STATS_DIR ?? '').trim()
+  || (dataDir ? path.join(dataDir, 'cron') : path.join(__dirname, '..', 'data', 'cron'));
+const cronTagMapPath = (process.env.DISCOCLAW_CRON_TAG_MAP ?? '').trim()
+  || path.join(cronStatsDir, 'tag-map.json');
+const cronTagMapSeedPath = path.join(__dirname, '..', 'scripts', 'cron', 'cron-tag-map.json');
 
 if (requireChannelContext && !discordChannelContext) {
   log.error({ contentDir }, 'DISCORD_REQUIRE_CHANNEL_CONTEXT=1 but channel context failed to initialize');
@@ -251,9 +262,11 @@ const botParams = {
   discordActionsGuild,
   discordActionsModeration,
   discordActionsPolls,
-  // Enable beads actions only after beadCtx is configured.
+  // Enable beads/crons actions only after contexts are configured.
   discordActionsBeads: false,
+  discordActionsCrons: false,
   beadCtx: undefined as BeadContext | undefined,
+  cronCtx: undefined as CronContext | undefined,
   messageHistoryBudget,
   summaryEnabled,
   summaryModel,
@@ -313,6 +326,13 @@ if (beadsEnabled) {
 // --- Cron subsystem ---
 const effectiveCronForum = cronForum || system?.cronsForumId || undefined;
 if (cronEnabled && effectiveCronForum) {
+  // Seed tag map from repo if target doesn't exist yet.
+  await seedTagMap(cronTagMapSeedPath, cronTagMapPath);
+
+  // Load persistent stats.
+  const cronStatsPath = path.join(cronStatsDir, 'cron-run-stats.json');
+  const cronStats = await loadRunStats(cronStatsPath);
+
   const actionFlags: ActionCategoryFlags = {
     channels: discordActionsChannels,
     messaging: discordActionsMessaging,
@@ -320,6 +340,21 @@ if (cronEnabled && effectiveCronForum) {
     moderation: discordActionsModeration,
     polls: discordActionsPolls,
     beads: discordActionsBeads && beadsEnabled && Boolean(beadCtx),
+    crons: discordActionsCrons && cronEnabled,
+  };
+
+  const cronCtx: CronContext = {
+    scheduler: null as any, // Will be set after scheduler creation.
+    client,
+    forumId: effectiveCronForum,
+    tagMapPath: cronTagMapPath,
+    statsStore: cronStats,
+    runtime,
+    autoTag: cronAutoTag,
+    autoTagModel: cronAutoTagModel,
+    cwd: workspaceCwd,
+    allowUserIds,
+    log,
   };
 
   const cronExecCtx = {
@@ -335,9 +370,15 @@ if (cronEnabled && effectiveCronForum) {
     discordActionsEnabled,
     actionFlags,
     beadCtx,
+    cronCtx,
+    statsStore: cronStats,
   };
 
   cronScheduler = new CronScheduler((job) => executeCronJob(job, cronExecCtx), log);
+  cronCtx.scheduler = cronScheduler;
+
+  botParams.cronCtx = cronCtx;
+  botParams.discordActionsCrons = discordActionsCrons && cronEnabled;
 
   try {
     await initCronForum({
@@ -353,6 +394,11 @@ if (cronEnabled && effectiveCronForum) {
   } catch (err) {
     log.error({ err }, 'cron:forum init failed');
   }
+
+  log.info(
+    { cronForum: effectiveCronForum, autoTag: cronAutoTag, actionsCrons: discordActionsCrons, statsDir: cronStatsDir },
+    'cron:initialized',
+  );
 } else if (cronEnabled && !effectiveCronForum) {
   log.warn('DISCOCLAW_CRON_ENABLED=1 but no cron forum was resolved (set DISCORD_GUILD_ID or DISCOCLAW_CRON_FORUM); cron subsystem disabled');
 }

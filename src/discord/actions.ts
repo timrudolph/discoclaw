@@ -11,6 +11,8 @@ import { POLL_ACTION_TYPES, executePollAction, pollActionsPromptSection } from '
 import type { PollActionRequest } from './actions-poll.js';
 import { BEAD_ACTION_TYPES, executeBeadAction, beadActionsPromptSection } from './actions-beads.js';
 import type { BeadActionRequest, BeadContext } from './actions-beads.js';
+import { CRON_ACTION_TYPES, executeCronAction, cronActionsPromptSection } from './actions-crons.js';
+import type { CronActionRequest, CronContext } from './actions-crons.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -30,6 +32,7 @@ export type ActionCategoryFlags = {
   moderation: boolean;
   polls: boolean;
   beads: boolean;
+  crons: boolean;
 };
 
 export type DiscordActionRequest =
@@ -38,7 +41,8 @@ export type DiscordActionRequest =
   | GuildActionRequest
   | ModerationActionRequest
   | PollActionRequest
-  | BeadActionRequest;
+  | BeadActionRequest
+  | CronActionRequest;
 
 export type DiscordActionResult =
   | { ok: true; summary: string }
@@ -58,6 +62,7 @@ function buildValidTypes(flags: ActionCategoryFlags): Set<string> {
   if (flags.moderation) for (const t of MODERATION_ACTION_TYPES) types.add(t);
   if (flags.polls) for (const t of POLL_ACTION_TYPES) types.add(t);
   if (flags.beads) for (const t of BEAD_ACTION_TYPES) types.add(t);
+  if (flags.crons) for (const t of CRON_ACTION_TYPES) types.add(t);
   return types;
 }
 
@@ -97,6 +102,7 @@ export async function executeDiscordActions(
   ctx: ActionContext,
   log?: LoggerLike,
   beadCtx?: BeadContext,
+  cronCtx?: CronContext,
 ): Promise<DiscordActionResult[]> {
   const results: DiscordActionResult[] = [];
 
@@ -119,6 +125,12 @@ export async function executeDiscordActions(
           result = { ok: false, error: 'Beads subsystem not configured' };
         } else {
           result = await executeBeadAction(action as BeadActionRequest, ctx, beadCtx);
+        }
+      } else if (CRON_ACTION_TYPES.has(action.type)) {
+        if (!cronCtx) {
+          result = { ok: false, error: 'Cron subsystem not configured' };
+        } else {
+          result = await executeCronAction(action as CronActionRequest, ctx, cronCtx);
         }
       } else {
         result = { ok: false, error: `Unknown action type: ${(action as any).type ?? 'unknown'}` };
@@ -171,6 +183,10 @@ You can perform Discord server actions by including structured action blocks in 
 
   if (flags.beads) {
     sections.push(beadActionsPromptSection());
+  }
+
+  if (flags.crons) {
+    sections.push(cronActionsPromptSection());
   }
 
   sections.push(`### Rules

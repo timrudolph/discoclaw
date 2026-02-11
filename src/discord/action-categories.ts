@@ -17,6 +17,9 @@ export const QUERY_ACTION_TYPES: ReadonlySet<string> = new Set([
   // Beads
   'beadList',
   'beadShow',
+  // Crons
+  'cronList',
+  'cronShow',
 ]);
 
 export function hasQueryAction(actionTypes: string[]): boolean {

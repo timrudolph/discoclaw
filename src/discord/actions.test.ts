@@ -10,6 +10,7 @@ const ALL_FLAGS: ActionCategoryFlags = {
   moderation: false,
   polls: false,
   beads: false,
+  crons: false,
 };
 
 // ---------------------------------------------------------------------------
