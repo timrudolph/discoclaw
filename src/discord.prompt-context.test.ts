@@ -13,7 +13,7 @@ vi.mock('./beads/bead-thread-cache.js', () => ({
 
 import { beadThreadCache } from './beads/bead-thread-cache.js';
 import { createMessageCreateHandler } from './discord.js';
-import { saveDurableMemory, addItem } from './discord/durable-memory.js';
+import { loadDurableMemory, saveDurableMemory, addItem } from './discord/durable-memory.js';
 import type { DurableMemoryStore } from './discord/durable-memory.js';
 
 const mockedCacheGet = vi.mocked(beadThreadCache.get);
@@ -859,5 +859,81 @@ describe('bead context injection into prompt', () => {
     expect(runtime.invoke).toHaveBeenCalled();
     expect(getPrompt()).not.toContain('Bead task context');
     expect(mockedCacheGet).not.toHaveBeenCalled();
+  });
+});
+
+describe('!memory remember threads Discord metadata into durable source', () => {
+  it('stores guildId, channelId, messageId, and channelName', async () => {
+    const queue = makeQueue();
+    const runtime = {
+      invoke: vi.fn(async function* () {
+        yield { type: 'text_final', text: 'should not run' } as any;
+      }),
+    } as any;
+
+    const durableDir = await fs.mkdtemp(path.join(os.tmpdir(), 'metadata-integration-'));
+    const summaryDir = await fs.mkdtemp(path.join(os.tmpdir(), 'metadata-summary-'));
+
+    const handler = createMessageCreateHandler({
+      allowUserIds: new Set(['123']),
+      runtime,
+      sessionManager: { getOrCreate: vi.fn(async () => 'sess') } as any,
+      workspaceCwd: '/tmp',
+      groupsDir: '/tmp',
+      useGroupDirCwd: false,
+      runtimeModel: 'opus',
+      runtimeTools: [],
+      runtimeTimeoutMs: 1000,
+      requireChannelContext: false,
+      autoIndexChannelContext: false,
+      autoJoinThreads: false,
+      useRuntimeSessions: true,
+      discordActionsEnabled: false,
+      discordActionsChannels: false,
+      discordActionsMessaging: false,
+      discordActionsGuild: false,
+      discordActionsModeration: false,
+      discordActionsPolls: false,
+      discordActionsBeads: false,
+      discordActionsBotProfile: false,
+      messageHistoryBudget: 0,
+      summaryEnabled: false,
+      summaryModel: 'haiku',
+      summaryMaxChars: 2000,
+      summaryEveryNTurns: 5,
+      summaryDataDir: summaryDir,
+      summaryToDurableEnabled: false,
+      shortTermMemoryEnabled: false,
+      shortTermDataDir: '/tmp/shortterm',
+      shortTermMaxEntries: 20,
+      shortTermMaxAgeMs: 21600000,
+      shortTermInjectMaxChars: 1000,
+      durableMemoryEnabled: true,
+      durableDataDir: durableDir,
+      durableInjectMaxChars: 2000,
+      durableMaxItems: 200,
+      memoryCommandsEnabled: true,
+      actionFollowupDepth: 0,
+      reactionHandlerEnabled: false,
+      reactionRemoveHandlerEnabled: false,
+      reactionMaxAgeMs: 86400000,
+      botDisplayName: 'TestBot',
+    }, queue);
+
+    await handler(makeMsg({
+      content: '!memory remember test fact',
+      guildId: 'g1',
+      channelId: 'ch1',
+      id: 'msg1',
+      channel: { send: vi.fn(async () => {}), isThread: () => false, name: 'dev' },
+    }));
+
+    const store = await loadDurableMemory(durableDir, '123');
+    expect(store).not.toBeNull();
+    expect(store!.items).toHaveLength(1);
+    expect(store!.items[0].source.guildId).toBe('g1');
+    expect(store!.items[0].source.channelId).toBe('ch1');
+    expect(store!.items[0].source.messageId).toBe('msg1');
+    expect(store!.items[0].source.channelName).toBe('dev');
   });
 });

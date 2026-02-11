@@ -266,7 +266,7 @@ export function createMessageCreateHandler(params: Omit<BotParams, 'token'>, que
 
       type SummaryWork = { existingSummary: string | null; exchange: string };
       let pendingSummaryWork: SummaryWork | null = null as SummaryWork | null;
-      type ShortTermAppend = { userContent: string; botResponse: string; channelName: string };
+      type ShortTermAppend = { userContent: string; botResponse: string; channelName: string; channelId: string };
       let pendingShortTermAppend: ShortTermAppend | null = null as ShortTermAppend | null;
 
       await queue.run(sessionKey, async () => {
@@ -276,6 +276,8 @@ export function createMessageCreateHandler(params: Omit<BotParams, 'token'>, que
           if (params.memoryCommandsEnabled) {
             const cmd = parseMemoryCommand(String(msg.content ?? ''));
             if (cmd) {
+              const ch: any = msg.channel as any;
+              const channelName = String(ch?.name ?? '');
               const response = await handleMemoryCommand(cmd, {
                 userId: msg.author.id,
                 sessionKey,
@@ -285,6 +287,8 @@ export function createMessageCreateHandler(params: Omit<BotParams, 'token'>, que
                 summaryDataDir: params.summaryDataDir,
                 channelId: msg.channelId,
                 messageId: msg.id,
+                guildId: msg.guildId ?? undefined,
+                channelName: channelName || undefined,
               });
               await msg.reply({ content: response, allowedMentions: NO_MENTIONS });
               return;
@@ -737,6 +741,7 @@ export function createMessageCreateHandler(params: Omit<BotParams, 'token'>, que
                 userContent: String(msg.content ?? ''),
                 botResponse: (processedText || '').slice(0, 300),
                 channelName: String(ch?.name ?? ch?.parent?.name ?? msg.channelId),
+                channelId: msg.channelId,
               };
             }
           }
@@ -778,6 +783,7 @@ export function createMessageCreateHandler(params: Omit<BotParams, 'token'>, que
               turnsSinceUpdate: 0,
             }).then(() => {
               if (params.summaryToDurableEnabled) {
+                const ch: any = msg.channel as any;
                 return applyUserTurnToDurable({
                   runtime: params.runtime,
                   userMessageText: String(msg.content ?? ''),
@@ -786,6 +792,10 @@ export function createMessageCreateHandler(params: Omit<BotParams, 'token'>, que
                   durableMaxItems: params.durableMaxItems,
                   model: params.summaryModel,
                   cwd: params.workspaceCwd,
+                  channelId: msg.channelId,
+                  messageId: msg.id,
+                  guildId: msg.guildId ?? undefined,
+                  channelName: String(ch?.name ?? '') || undefined,
                 });
               }
             }),
@@ -806,6 +816,7 @@ export function createMessageCreateHandler(params: Omit<BotParams, 'token'>, que
           {
             timestamp: Date.now(),
             sessionKey,
+            channelId: stWork.channelId,
             channelName: stWork.channelName,
             summary: buildExcerptSummary(stWork.userContent, stWork.botResponse),
           },

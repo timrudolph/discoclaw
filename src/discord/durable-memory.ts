@@ -8,7 +8,7 @@ export type DurableItem = {
   text: string;
   tags: string[];
   status: 'active' | 'deprecated';
-  source: { type: 'discord' | 'manual' | 'summary'; channelId?: string; messageId?: string };
+  source: { type: 'discord' | 'manual' | 'summary'; channelId?: string; messageId?: string; guildId?: string; channelName?: string };
   createdAt: number;
   updatedAt: number;
 };
@@ -171,7 +171,8 @@ export function selectItemsForInjection(
 
 function formatItemLine(item: DurableItem): string {
   const date = new Date(item.updatedAt).toISOString().slice(0, 10);
-  return `- [${item.kind}] ${item.text} (src: ${item.source.type}, updated ${date})`;
+  const ch = item.source.channelName ? `, #${item.source.channelName}` : '';
+  return `- [${item.kind}] ${item.text} (src: ${item.source.type}${ch}, updated ${date})`;
 }
 
 export function formatDurableSection(items: DurableItem[]): string {

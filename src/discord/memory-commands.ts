@@ -8,7 +8,7 @@ import {
   selectItemsForInjection,
   formatDurableSection,
 } from './durable-memory.js';
-import type { DurableMemoryStore } from './durable-memory.js';
+import type { DurableMemoryStore, DurableItem } from './durable-memory.js';
 import { loadSummary } from './summarizer.js';
 import { durableWriteQueue } from './durable-write-queue.js';
 
@@ -39,6 +39,8 @@ export type HandleMemoryCommandOpts = {
   summaryDataDir: string;
   channelId?: string;
   messageId?: string;
+  guildId?: string;
+  channelName?: string;
 };
 
 export async function handleMemoryCommand(
@@ -69,9 +71,11 @@ export async function handleMemoryCommand(
     if (cmd.action === 'remember') {
       return durableWriteQueue.run(opts.userId, async () => {
         const store = await loadOrCreate(opts.durableDataDir, opts.userId);
-        const source: { type: 'manual'; channelId?: string; messageId?: string } = { type: 'manual' };
+        const source: DurableItem['source'] = { type: 'manual' };
         if (opts.channelId) source.channelId = opts.channelId;
         if (opts.messageId) source.messageId = opts.messageId;
+        if (opts.guildId) source.guildId = opts.guildId;
+        if (opts.channelName) source.channelName = opts.channelName;
         addItem(store, cmd.args, source, opts.durableMaxItems);
         await saveDurableMemory(opts.durableDataDir, opts.userId, store);
         return `Remembered: ${cmd.args}`;

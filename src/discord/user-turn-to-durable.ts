@@ -80,6 +80,10 @@ export type ApplyUserTurnToDurableOpts = {
   durableMaxItems: number;
   model: string;
   cwd: string;
+  channelId?: string;
+  messageId?: string;
+  guildId?: string;
+  channelName?: string;
 };
 
 export async function applyUserTurnToDurable(opts: ApplyUserTurnToDurableOpts): Promise<void> {
@@ -99,7 +103,12 @@ export async function applyUserTurnToDurable(opts: ApplyUserTurnToDurableOpts): 
     };
 
     for (const item of items) {
-      addItem(store, item.text, { type: 'summary' }, opts.durableMaxItems, item.kind);
+      const source: DurableItem['source'] = { type: 'summary' };
+      if (opts.channelId) source.channelId = opts.channelId;
+      if (opts.messageId) source.messageId = opts.messageId;
+      if (opts.guildId) source.guildId = opts.guildId;
+      if (opts.channelName) source.channelName = opts.channelName;
+      addItem(store, item.text, { ...source }, opts.durableMaxItems, item.kind);
     }
 
     await saveDurableMemory(opts.durableDataDir, opts.userId, store);

@@ -11,6 +11,7 @@ import { KeyedQueue } from '../group-queue.js';
 export type ShortTermEntry = {
   timestamp: number;
   sessionKey: string;
+  channelId?: string;
   channelName: string;
   summary: string;
 };

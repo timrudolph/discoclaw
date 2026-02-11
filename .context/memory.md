@@ -208,6 +208,31 @@ Built by `src/discord/prompt-common.ts` and assembled in `src/discord.ts`.
 - **Short-term memory** has its own internal KeyedQueue instance.
 - Both use atomic writes (`.tmp.${pid}` + `rename()`) safe for single-process.
 
+## Provenance
+
+Every durable item stores a `source` object with Discord metadata:
+
+```typescript
+source: {
+  type: 'discord' | 'manual' | 'summary';
+  channelId?: string;   // Discord channel ID
+  messageId?: string;   // Discord message ID
+  guildId?: string;     // Discord guild ID (omitted in DMs)
+  channelName?: string; // Channel name for display (omitted in DMs)
+}
+```
+
+- `!memory remember` stores `type: 'manual'` with all four metadata fields.
+- Auto-extraction stores `type: 'summary'` with metadata from the trigger message.
+- DMs omit `guildId` and `channelName`; `channelId`/`messageId` are still stored.
+- Threads use their own name (`ch.name`), not the parent channel name.
+
+**Prompt rendering:** Channel names appear in durable memory lines when present:
+`- [fact] Prefers Rust (src: manual, #dev, updated 2025-01-15)`. Full IDs are in
+the data layer only (for future message links / citations).
+
+Short-term entries also store `channelId` alongside the existing `channelName`.
+
 ## Config Reference
 
 | Variable | Default | Layer |

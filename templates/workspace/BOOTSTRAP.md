@@ -42,13 +42,16 @@ Once you know each other, figure out the basics. Don't run through these like a 
 
 - **What they need you for** — coding? research? project management? everything?
 - **Their stack** — languages, frameworks, tools, services they use daily
+- **How they work** — commit style, PR process, code conventions, anything opinionated
 - **Communication style** — how verbose? how formal? emoji or no?
 - **Schedule** — timezone, typical hours, and when *not* to disturb them
 - **Current projects** — what's on their plate right now?
 - **Hard no's** — things you should never do without asking
 - **Key people** — anyone you'll hear about or interact with regularly?
+- **Find them online** — GitHub, personal site, socials — anywhere you might look them up or reference
 
-Write what you learn to `USER.md` (their info) and durable memory (quick facts via `!memory remember`).
+Write what you learn to `USER.md` (their info), `AGENTS.md` (rules and conventions to follow),
+and durable memory (quick facts via `!memory remember`).
 Don't force it — some of this will come up naturally in the first few sessions. But try to cover the basics before your first conversation ends.
 
 ## Access & Permissions

@@ -197,6 +197,54 @@ describe('applyUserTurnToDurable', () => {
     expect(store!.items).toHaveLength(3);
   });
 
+  it('persists Discord metadata in source when provided', async () => {
+    const dir = await makeTmpDir();
+    const runtime = makeRuntime('[{"kind":"fact","text":"Likes cats"}]');
+
+    await applyUserTurnToDurable({
+      runtime,
+      userMessageText: 'I love cats',
+      userId: '42',
+      durableDataDir: dir,
+      durableMaxItems: 200,
+      model: 'haiku',
+      cwd: '/tmp',
+      channelId: 'ch1',
+      messageId: 'msg1',
+      guildId: 'g1',
+      channelName: 'dev',
+    });
+
+    const store = await loadDurableMemory(dir, '42');
+    expect(store).not.toBeNull();
+    expect(store!.items[0].source).toEqual({
+      type: 'summary',
+      channelId: 'ch1',
+      messageId: 'msg1',
+      guildId: 'g1',
+      channelName: 'dev',
+    });
+  });
+
+  it('omits Discord metadata when not provided', async () => {
+    const dir = await makeTmpDir();
+    const runtime = makeRuntime('[{"kind":"fact","text":"Likes cats"}]');
+
+    await applyUserTurnToDurable({
+      runtime,
+      userMessageText: 'I love cats',
+      userId: '42',
+      durableDataDir: dir,
+      durableMaxItems: 200,
+      model: 'haiku',
+      cwd: '/tmp',
+    });
+
+    const store = await loadDurableMemory(dir, '42');
+    expect(store).not.toBeNull();
+    expect(store!.items[0].source).toEqual({ type: 'summary' });
+  });
+
   it('handles runtime error gracefully (no crash)', async () => {
     const dir = await makeTmpDir();
     const runtime = {

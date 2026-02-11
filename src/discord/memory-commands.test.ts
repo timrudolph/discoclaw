@@ -159,6 +159,25 @@ describe('handleMemoryCommand', () => {
     expect(store.items[0].source).toEqual({ type: 'manual', channelId: 'ch42', messageId: 'msg99' });
   });
 
+  it('remember persists guildId and channelName in source', async () => {
+    const durableDir = await makeTmpDir();
+
+    await handleMemoryCommand(
+      { action: 'remember', args: 'test fact' },
+      baseOpts({ durableDataDir: durableDir, channelId: 'ch42', messageId: 'msg99', guildId: 'g1', channelName: 'dev' }),
+    );
+
+    const raw = await fs.readFile(path.join(durableDir, '12345.json'), 'utf8');
+    const store = JSON.parse(raw) as DurableMemoryStore;
+    expect(store.items[0].source).toEqual({
+      type: 'manual',
+      channelId: 'ch42',
+      messageId: 'msg99',
+      guildId: 'g1',
+      channelName: 'dev',
+    });
+  });
+
   it('concurrent remember calls serialize correctly', async () => {
     const durableDir = await makeTmpDir();
 

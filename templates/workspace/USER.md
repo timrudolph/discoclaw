@@ -19,7 +19,11 @@ _Learn about the person you're helping. Update this as you go._
 ## Work
 - **Primary use case:** *(what they mainly need help with)*
 - **Stack:** *(languages, frameworks, tools)*
+- **Workflow:** *(commit style, PR process, code conventions)*
 - **Current projects:** *(active work)*
+
+## Online
+- **Links:** *(GitHub, personal site, social profiles, etc.)*
 
 ## People
 - **Key contacts:** *(collaborators, team members the bot should know)*

@@ -96,6 +96,19 @@ describe('appendEntry', () => {
     expect(store!.entries[0].channelName).toBe('new');
   });
 
+  it('persists channelId when provided', async () => {
+    const dir = await makeTmpDir();
+    const guildUserId = 'g1-u1';
+
+    await appendEntry(dir, guildUserId, makeEntry({ channelId: 'ch123' }), {
+      maxEntries: 20,
+      maxAgeMs: 3600_000,
+    });
+
+    const store = await loadShortTermMemory(dir, guildUserId);
+    expect(store!.entries[0].channelId).toBe('ch123');
+  });
+
   it('enforces maxEntries cap', async () => {
     const dir = await makeTmpDir();
     const guildUserId = 'g1-u1';

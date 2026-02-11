@@ -279,4 +279,32 @@ describe('formatDurableSection', () => {
     expect(result).toContain('- [fact] User prefers TypeScript over JavaScript. (src: manual, updated 2026-02-09)');
     expect(result).toContain('- [project] Current project: discoclaw memory system. (src: discord, updated 2026-02-09)');
   });
+
+  it('includes channel name when present in source', () => {
+    const items: DurableItem[] = [
+      makeItem({
+        kind: 'fact',
+        text: 'Prefers Rust',
+        source: { type: 'manual', channelName: 'dev' },
+        updatedAt: new Date('2026-01-15').getTime(),
+      }),
+    ];
+    const result = formatDurableSection(items);
+    expect(result).toContain('#dev');
+    expect(result).toMatch(/src: manual, #dev, updated/);
+  });
+
+  it('omits channel name when absent from source', () => {
+    const items: DurableItem[] = [
+      makeItem({
+        kind: 'fact',
+        text: 'Prefers Rust',
+        source: { type: 'manual' },
+        updatedAt: new Date('2026-01-15').getTime(),
+      }),
+    ];
+    const result = formatDurableSection(items);
+    expect(result).not.toContain('#');
+    expect(result).toMatch(/src: manual, updated/);
+  });
 });
