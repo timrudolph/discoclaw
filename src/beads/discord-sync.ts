@@ -179,7 +179,7 @@ export async function closeBeadThread(
     // Ignore unarchive failures.
   }
 
-  const closedName = buildThreadName(bead.id, bead.title, 'closed');
+  const closedName = buildThreadName(bead.id, bead.title, bead.status);
 
   const reason = bead.close_reason || 'Closed';
 
@@ -203,6 +203,18 @@ export async function closeBeadThread(
   } catch {
     // Ignore archive failures.
   }
+}
+
+/** Check if a bead thread is already in its final closed state (archived + correct name). */
+export async function isBeadThreadAlreadyClosed(
+  client: Client,
+  threadId: string,
+  bead: BeadData,
+): Promise<boolean> {
+  const thread = await fetchThreadChannel(client, threadId);
+  if (!thread) return true; // Thread doesn't exist — nothing to close.
+  const closedName = buildThreadName(bead.id, bead.title, bead.status);
+  return thread.archived === true && thread.name === closedName;
 }
 
 /** Update a thread's name to reflect current bead state. */
