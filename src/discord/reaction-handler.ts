@@ -8,7 +8,7 @@ import { discordSessionKey } from './session-key.js';
 import { ensureIndexedDiscordChannelContext, resolveDiscordChannelContext } from './channel-context.js';
 import { parseDiscordActions, executeDiscordActions, discordActionsPromptSection } from './actions.js';
 import type { ActionCategoryFlags } from './actions.js';
-import { buildContextFiles, buildDurableMemorySection, loadWorkspacePaFiles, resolveEffectiveTools } from './prompt-common.js';
+import { buildContextFiles, buildDurableMemorySection, buildBeadThreadSection, loadWorkspacePaFiles, resolveEffectiveTools } from './prompt-common.js';
 import { replyThenSendChunks } from './output-common.js';
 import { mapRuntimeErrorToUserMessage } from './user-errors.js';
 import { globalMetrics } from '../observability/metrics.js';
@@ -129,13 +129,22 @@ export function createReactionAddHandler(
 
           const paFiles = await loadWorkspacePaFiles(params.workspaceCwd);
           const contextFiles = buildContextFiles(paFiles, params.discordChannelContext, channelCtx.contextPath);
-          const durableSection = await buildDurableMemorySection({
-            enabled: params.durableMemoryEnabled,
-            durableDataDir: params.durableDataDir,
-            userId: user.id,
-            durableInjectMaxChars: params.durableInjectMaxChars,
-            log: params.log,
-          });
+          const [durableSection, beadSection] = await Promise.all([
+            buildDurableMemorySection({
+              enabled: params.durableMemoryEnabled,
+              durableDataDir: params.durableDataDir,
+              userId: user.id,
+              durableInjectMaxChars: params.durableInjectMaxChars,
+              log: params.log,
+            }),
+            buildBeadThreadSection({
+              isThread,
+              threadId,
+              threadParentId,
+              beadCtx: params.beadCtx,
+              log: params.log,
+            }),
+          ]);
 
           // Build prompt.
           const emoji = reaction.emoji.name ?? '(unknown)';
@@ -158,6 +167,9 @@ export function createReactionAddHandler(
           let prompt =
             `Context files (read with Read tool before responding, in order):\n` +
             contextFiles.map((p) => `- ${p}`).join('\n') +
+            (beadSection
+              ? `\n\n---\n${beadSection}\n`
+              : '') +
             (durableSection
               ? `\n\n---\nDurable memory (user-specific notes):\n${durableSection}\n`
               : '') +

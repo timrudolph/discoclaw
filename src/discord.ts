@@ -27,7 +27,7 @@ import type { SystemScaffold } from './discord/system-bootstrap.js';
 import { NO_MENTIONS } from './discord/allowed-mentions.js';
 import { createReactionAddHandler } from './discord/reaction-handler.js';
 import { splitDiscord, truncateCodeBlocks, renderDiscordTail, renderActivityTail, formatBoldLabel, thinkingLabel, selectStreamingOutput } from './discord/output-utils.js';
-import { buildContextFiles, buildDurableMemorySection, loadWorkspacePaFiles, loadWorkspaceMemoryFile, loadDailyLogFiles, resolveEffectiveTools } from './discord/prompt-common.js';
+import { buildContextFiles, buildDurableMemorySection, buildBeadThreadSection, loadWorkspacePaFiles, loadWorkspaceMemoryFile, loadDailyLogFiles, resolveEffectiveTools } from './discord/prompt-common.js';
 import { editThenSendChunks } from './discord/output-common.js';
 import { messageContentIntentHint, mapRuntimeErrorToUserMessage } from './discord/user-errors.js';
 import { parseHealthCommand, renderHealthReport, renderHealthToolsReport } from './discord/health-command.js';
@@ -371,17 +371,29 @@ export function createMessageCreateHandler(params: Omit<BotParams, 'token'>, que
             }
           }
 
-          const durableSection = await buildDurableMemorySection({
-            enabled: params.durableMemoryEnabled,
-            durableDataDir: params.durableDataDir,
-            userId: msg.author.id,
-            durableInjectMaxChars: params.durableInjectMaxChars,
-            log: params.log,
-          });
+          const [durableSection, beadSection] = await Promise.all([
+            buildDurableMemorySection({
+              enabled: params.durableMemoryEnabled,
+              durableDataDir: params.durableDataDir,
+              userId: msg.author.id,
+              durableInjectMaxChars: params.durableInjectMaxChars,
+              log: params.log,
+            }),
+            buildBeadThreadSection({
+              isThread,
+              threadId,
+              threadParentId,
+              beadCtx: params.beadCtx,
+              log: params.log,
+            }),
+          ]);
 
           let prompt =
             `Context files (read with Read tool before responding, in order):\n` +
             contextFiles.map((p) => `- ${p}`).join('\n') +
+            (beadSection
+              ? `\n\n---\n${beadSection}\n`
+              : '') +
             (durableSection
               ? `\n\n---\nDurable memory (user-specific notes):\n${durableSection}\n`
               : '') +

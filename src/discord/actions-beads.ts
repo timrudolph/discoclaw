@@ -16,6 +16,7 @@ import {
   getThreadIdFromBead,
 } from '../beads/discord-sync.js';
 import { autoTagBead } from '../beads/auto-tag.js';
+import { beadThreadCache } from '../beads/bead-thread-cache.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -129,6 +130,7 @@ export async function executeBeadAction(
         beadCtx.log?.warn({ err, beadId: bead.id }, 'beads:thread creation failed');
       }
 
+      beadThreadCache.invalidate();
       const threadNote = threadId ? ` (thread created)` : '';
       return { ok: true, summary: `Bead ${bead.id} created: "${bead.title}"${threadNote}` };
     }
@@ -176,6 +178,7 @@ export async function executeBeadAction(
         beadCtx.log?.warn({ err, beadId: action.beadId }, 'beads:bdShow failed after update');
       }
 
+      beadThreadCache.invalidate();
       const changes: string[] = [];
       if (action.title) changes.push(`title → "${action.title}"`);
       if (action.status) changes.push(`status → ${action.status}`);
@@ -207,6 +210,7 @@ export async function executeBeadAction(
         beadCtx.log?.warn({ err, beadId: action.beadId }, 'beads:bdShow failed after close');
       }
 
+      beadThreadCache.invalidate();
       return { ok: true, summary: `Bead ${action.beadId} closed${action.reason ? `: ${action.reason}` : ''}` };
     }
 
@@ -263,6 +267,7 @@ export async function executeBeadAction(
           log: beadCtx.log,
           statusPoster: beadCtx.statusPoster,
         });
+        beadThreadCache.invalidate();
         return {
           ok: true,
           summary: `Sync complete: ${result.threadsCreated} created, ${result.emojisUpdated} updated, ${result.starterMessagesUpdated} starters, ${result.threadsArchived} archived, ${result.statusesUpdated} status-fixes${result.warnings ? `, ${result.warnings} warnings` : ''}`,

@@ -64,6 +64,15 @@ export type BeadListParams = {
   limit?: number;
 };
 
+export type BeadSyncResult = {
+  threadsCreated: number;
+  emojisUpdated: number;
+  starterMessagesUpdated: number;
+  threadsArchived: number;
+  statusesUpdated: number;
+  warnings: number;
+};
+
 /** Tag name → Discord forum tag ID. */
 export type TagMap = Record<string, string>;
 

@@ -1,11 +1,22 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, beforeEach } from 'vitest';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
+// Mock the bead thread cache so integration tests can control bead lookups.
+vi.mock('./beads/bead-thread-cache.js', () => ({
+  beadThreadCache: {
+    get: vi.fn().mockResolvedValue(null),
+    invalidate: vi.fn(),
+  },
+}));
+
+import { beadThreadCache } from './beads/bead-thread-cache.js';
 import { createMessageCreateHandler } from './discord.js';
 import { saveDurableMemory, addItem } from './discord/durable-memory.js';
 import type { DurableMemoryStore } from './discord/durable-memory.js';
+
+const mockedCacheGet = vi.mocked(beadThreadCache.get);
 
 function makeQueue() {
   return {
@@ -635,5 +646,149 @@ describe('memory command interception', () => {
       content: expect.stringContaining('Durable memory:'),
       allowedMentions: { parse: [] },
     }));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Bead context injection into prompt
+// ---------------------------------------------------------------------------
+
+const BEAD_FORUM_ID = '11112222333344445555';
+
+function makeBeadParams(overrides?: Partial<any>) {
+  const queue = makeQueue();
+  let seenPrompt = '';
+  const runtime = {
+    invoke: vi.fn(async function* (p: any) {
+      seenPrompt = p.prompt;
+      yield { type: 'text_final', text: 'ok' } as any;
+    }),
+  } as any;
+
+  const params: any = {
+    allowUserIds: new Set(['123']),
+    runtime,
+    sessionManager: { getOrCreate: vi.fn(async () => 'sess') } as any,
+    workspaceCwd: '/tmp',
+    groupsDir: '/tmp',
+    useGroupDirCwd: false,
+    runtimeModel: 'opus',
+    runtimeTools: [],
+    runtimeTimeoutMs: 1000,
+    requireChannelContext: false,
+    autoIndexChannelContext: false,
+    autoJoinThreads: false,
+    useRuntimeSessions: true,
+    discordActionsEnabled: false,
+    discordActionsChannels: false,
+    discordActionsMessaging: false,
+    discordActionsGuild: false,
+    discordActionsModeration: false,
+    discordActionsPolls: false,
+    discordActionsBeads: false,
+    discordActionsBotProfile: false,
+    messageHistoryBudget: 0,
+    summaryEnabled: false,
+    summaryModel: 'haiku',
+    summaryMaxChars: 2000,
+    summaryEveryNTurns: 5,
+    summaryDataDir: '/tmp/summaries',
+    durableMemoryEnabled: false,
+    durableDataDir: '/tmp/durable',
+    durableInjectMaxChars: 2000,
+    durableMaxItems: 200,
+    memoryCommandsEnabled: false,
+    actionFollowupDepth: 0,
+    reactionHandlerEnabled: false,
+    reactionMaxAgeMs: 86400000,
+    botDisplayName: 'TestBot',
+    beadCtx: {
+      beadsCwd: '/tmp/beads',
+      forumId: BEAD_FORUM_ID,
+      tagMap: {},
+      runtime: {} as any,
+      autoTag: false,
+      autoTagModel: 'haiku',
+    },
+    ...overrides,
+  };
+  return { queue, runtime, params, getPrompt: () => seenPrompt };
+}
+
+describe('bead context injection into prompt', () => {
+  beforeEach(() => {
+    mockedCacheGet.mockReset().mockResolvedValue(null);
+  });
+
+  it('includes bead section when message is from a bead forum thread', async () => {
+    mockedCacheGet.mockResolvedValue({
+      id: 'ws-042',
+      title: 'Fix auth bug',
+      status: 'in_progress',
+      priority: 2,
+      owner: 'David',
+    } as any);
+
+    const { queue, runtime, params, getPrompt } = makeBeadParams();
+    const handler = createMessageCreateHandler(params, queue);
+
+    await handler(makeMsg({
+      channelId: 'bead-thread-1',
+      channel: {
+        send: vi.fn(async () => {}),
+        isThread: () => true,
+        parentId: BEAD_FORUM_ID,
+        name: 'bead-thread',
+        id: 'bead-thread-1',
+      },
+    }));
+
+    expect(runtime.invoke).toHaveBeenCalled();
+    expect(getPrompt()).toContain('Bead task context for this thread');
+    expect(getPrompt()).toContain('ws-042');
+    expect(getPrompt()).toContain('Fix auth bug');
+  });
+
+  it('does not include bead section for DMs', async () => {
+    const { queue, runtime, params, getPrompt } = makeBeadParams();
+    const handler = createMessageCreateHandler(params, queue);
+
+    await handler(makeMsg({ guildId: null, channelId: 'dmchan' }));
+
+    expect(runtime.invoke).toHaveBeenCalled();
+    expect(getPrompt()).not.toContain('Bead task context');
+  });
+
+  it('does not include bead section for non-bead thread channels', async () => {
+    const { queue, runtime, params, getPrompt } = makeBeadParams();
+    const handler = createMessageCreateHandler(params, queue);
+
+    // Thread in a different parent channel (not the beads forum).
+    await handler(makeMsg({
+      channelId: 'other-thread-1',
+      channel: {
+        send: vi.fn(async () => {}),
+        isThread: () => true,
+        parentId: '99998888777766665555',
+        name: 'other-thread',
+        id: 'other-thread-1',
+      },
+    }));
+
+    expect(runtime.invoke).toHaveBeenCalled();
+    expect(getPrompt()).not.toContain('Bead task context');
+    // Cache should not even be called — forum ID mismatch short-circuits.
+    expect(mockedCacheGet).not.toHaveBeenCalled();
+  });
+
+  it('does not include bead section for non-thread guild channels', async () => {
+    const { queue, runtime, params, getPrompt } = makeBeadParams();
+    const handler = createMessageCreateHandler(params, queue);
+
+    await handler(makeMsg({ channelId: 'regular-channel' }));
+
+    expect(runtime.invoke).toHaveBeenCalled();
+    expect(getPrompt()).not.toContain('Bead task context');
+    expect(mockedCacheGet).not.toHaveBeenCalled();
   });
 });
