@@ -176,6 +176,7 @@ export async function runBeadSync(opts: BeadSyncOptions): Promise<BeadSyncResult
         alreadyClosed = await isBeadThreadAlreadyClosed(client, threadId, bead);
       } catch {
         // Check failed (rate limit, network) — proceed with close attempt.
+        warnings++;
       }
       if (alreadyClosed) {
         await sleep(throttleMs);

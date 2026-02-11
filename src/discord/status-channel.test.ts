@@ -107,6 +107,21 @@ describe('createStatusPoster', () => {
     expect(fieldNames).toContain('Warnings');
   });
 
+  it('beadSyncComplete() sends orange embed when warnings > 0 even with non-zero counters', async () => {
+    const ch = mockChannel();
+    const poster = createStatusPoster(ch);
+    await poster.beadSyncComplete({
+      threadsCreated: 2, emojisUpdated: 0, starterMessagesUpdated: 0, threadsArchived: 1, statusesUpdated: 0, warnings: 1,
+    });
+    expect(ch.send).toHaveBeenCalledOnce();
+    const embed = ch.send.mock.calls[0][0].embeds[0];
+    expect(embed.data.color).toBe(0xfee75c);
+    const fieldNames = embed.data.fields.map((f: any) => f.name);
+    expect(fieldNames).toContain('Created');
+    expect(fieldNames).toContain('Archived');
+    expect(fieldNames).toContain('Warnings');
+  });
+
   it('beadSyncComplete() is silent when all counters and warnings are zero', async () => {
     const ch = mockChannel();
     const poster = createStatusPoster(ch);

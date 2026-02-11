@@ -283,7 +283,7 @@ describe('runBeadSync', () => {
       throttleMs: 0,
     } as any);
 
-    expect(result.warnings).toBeGreaterThanOrEqual(1);
+    expect(result.warnings).toBe(1);
   });
 
   it('warnings counter increments when forum is not found', async () => {
@@ -299,6 +299,26 @@ describe('runBeadSync', () => {
       throttleMs: 0,
     } as any);
 
+    expect(result.warnings).toBe(1);
+  });
+
+  it('calls statusPoster.beadSyncComplete in forum-not-found early return', async () => {
+    const { resolveBeadsForum } = await import('./discord-sync.js');
+    (resolveBeadsForum as any).mockResolvedValueOnce(null);
+
+    const statusPoster = { beadSyncComplete: vi.fn(async () => {}) } as any;
+    const result = await runBeadSync({
+      client: makeClient(),
+      guild: makeGuild(),
+      forumId: 'forum',
+      tagMap: {},
+      beadsCwd: '/tmp',
+      throttleMs: 0,
+      statusPoster,
+    } as any);
+
+    expect(statusPoster.beadSyncComplete).toHaveBeenCalledOnce();
+    expect(statusPoster.beadSyncComplete).toHaveBeenCalledWith(result);
     expect(result.warnings).toBe(1);
   });
 });

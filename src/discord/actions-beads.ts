@@ -265,7 +265,7 @@ export async function executeBeadAction(
         });
         return {
           ok: true,
-          summary: `Sync complete: ${result.threadsCreated} created, ${result.emojisUpdated} updated, ${result.starterMessagesUpdated} starters, ${result.threadsArchived} archived, ${result.statusesUpdated} status-fixes`,
+          summary: `Sync complete: ${result.threadsCreated} created, ${result.emojisUpdated} updated, ${result.starterMessagesUpdated} starters, ${result.threadsArchived} archived, ${result.statusesUpdated} status-fixes${result.warnings ? `, ${result.warnings} warnings` : ''}`,
         };
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
