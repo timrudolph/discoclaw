@@ -14,6 +14,7 @@ Core instructions live in `CLAUDE.md` at the repo root.
 | **Runtime adapters (Claude CLI, OpenAI/Gemini later)** | `runtime.md` |
 | **Ops / systemd service** | `ops.md` |
 | **Memory system** | `memory.md` |
+| **Beads / task tracking / bd CLI** | `beads.md` |
 | **Architecture / system overview** | `architecture.md` |
 
 ## Context Hygiene (Strict)
@@ -27,5 +28,6 @@ Core instructions live in `CLAUDE.md` at the repo root.
 - **runtime.md** — Runtime adapter interface, Claude CLI flags, capability routing
 - **ops.md** — systemd service notes, logs, restart workflow
 - **memory.md** — Memory layers, user-facing examples, config reference, concurrency
+- **beads.md** — Bead task tracker: data model, bd CLI, hooks, Discord sync, auto-tagging
 - **architecture.md** — System overview, data flow, directory layout, key concepts
 - **bot-setup.md** — One-time bot creation and invite guide
