@@ -83,7 +83,7 @@ See `dev.md` §Beads for the full env var table. Key vars:
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `DISCOCLAW_BEADS_ENABLED` | `0` | Master switch |
+| `DISCOCLAW_BEADS_ENABLED` | `1` | Master switch |
 | `BD_BIN` | `bd` | Path to bd binary |
 | `DISCOCLAW_BEADS_CWD` | `WORKSPACE_CWD` | bd working directory |
 | `DISCOCLAW_BEADS_FORUM` | *(empty)* | Forum channel for threads |

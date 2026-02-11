@@ -44,6 +44,10 @@ Discord message
   CLI/API. Currently only Claude Code CLI (`src/runtime/claude-code-cli.ts`).
 - **Discord actions** — structured JSON actions the AI can emit in its response
   (send messages, create channels, manage beads, etc.), parsed and executed post-response.
+- **Beads** — built-in task tracker synced to Discord forum threads via the `bd` CLI.
+  Enabled by default; degrades gracefully when `bd` isn't installed.
+- **Cron** — forum-based scheduled tasks. Each forum thread defines a job;
+  archive to pause, unarchive to resume. Enabled by default.
 
 ## Entry Points
 

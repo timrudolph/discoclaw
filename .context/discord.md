@@ -116,7 +116,7 @@ Overlap protection: if a previous run for the same job is still active, the next
 Implementation: `src/cron/`
 
 ## Beads (Task Tracking)
-When `DISCOCLAW_BEADS_ENABLED=1` and `DISCOCLAW_BEADS_FORUM` is set to a forum channel name or ID, Discoclaw integrates with the `bd` CLI (beads issue tracker) to sync tasks to Discord forum threads.
+Discoclaw includes a task tracker that syncs with Discord forum threads via the `bd` CLI (beads issue tracker). It's enabled by default and degrades gracefully when `bd` isn't installed or no forum channel is configured.
 
 Two paths produce the same Discord state:
 

@@ -35,7 +35,7 @@ Your assistant has a persistent working directory with real tools.
 - **Discord actions** — Your assistant can manage your server: create channels, send messages, search history, create threads, run polls, manage roles, and more — each category gated behind its own feature flag
 - **Multi-turn sessions** — A live process persists between messages, so file reads, edits, and tool results carry across turns instead of starting fresh every time
 - **Cron jobs** — Define scheduled tasks as forum threads in plain language; edit to change, archive to pause, unarchive to resume
-- **Task tracking** — Integrated with [beads](https://github.com/qwibitai/beads), a lightweight issue tracker; create, update, and close tasks from Discord or the terminal, synced to forum threads
+- **Task tracking** — Built-in task tracking via [beads](https://github.com/qwibitai/beads), a lightweight issue tracker; create, update, and close tasks from Discord or the terminal, synced to forum threads
 
 ## How it works
 
