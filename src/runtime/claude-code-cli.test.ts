@@ -226,6 +226,120 @@ describe('Claude CLI runtime adapter (smoke)', () => {
     expect(callArgs).not.toContain('--strict-mcp-config');
   });
 
+  it('--fallback-model is passed when set', async () => {
+    const execaMock = execa as any;
+    execaMock.mockImplementation(() => makeProcessText({ stdout: 'ok', exitCode: 0 }));
+
+    const rt = createClaudeCliRuntime({
+      claudeBin: 'claude',
+      dangerouslySkipPermissions: false,
+      outputFormat: 'text',
+      fallbackModel: 'sonnet',
+    });
+
+    for await (const _evt of rt.invoke({ prompt: 'p', model: 'opus', cwd: '/tmp' })) {
+      // drain
+    }
+
+    const callArgs = execaMock.mock.calls[0]?.[1] ?? [];
+    expect(callArgs).toContain('--fallback-model');
+    expect(callArgs[callArgs.indexOf('--fallback-model') + 1]).toBe('sonnet');
+  });
+
+  it('--fallback-model is omitted when unset', async () => {
+    const execaMock = execa as any;
+    execaMock.mockImplementation(() => makeProcessText({ stdout: 'ok', exitCode: 0 }));
+
+    const rt = createClaudeCliRuntime({
+      claudeBin: 'claude',
+      dangerouslySkipPermissions: false,
+      outputFormat: 'text',
+    });
+
+    for await (const _evt of rt.invoke({ prompt: 'p', model: 'opus', cwd: '/tmp' })) {
+      // drain
+    }
+
+    const callArgs = execaMock.mock.calls[0]?.[1] ?? [];
+    expect(callArgs).not.toContain('--fallback-model');
+  });
+
+  it('--max-budget-usd is passed when set', async () => {
+    const execaMock = execa as any;
+    execaMock.mockImplementation(() => makeProcessText({ stdout: 'ok', exitCode: 0 }));
+
+    const rt = createClaudeCliRuntime({
+      claudeBin: 'claude',
+      dangerouslySkipPermissions: false,
+      outputFormat: 'text',
+      maxBudgetUsd: 5,
+    });
+
+    for await (const _evt of rt.invoke({ prompt: 'p', model: 'opus', cwd: '/tmp' })) {
+      // drain
+    }
+
+    const callArgs = execaMock.mock.calls[0]?.[1] ?? [];
+    expect(callArgs).toContain('--max-budget-usd');
+    expect(callArgs[callArgs.indexOf('--max-budget-usd') + 1]).toBe('5');
+  });
+
+  it('--max-budget-usd is omitted when unset', async () => {
+    const execaMock = execa as any;
+    execaMock.mockImplementation(() => makeProcessText({ stdout: 'ok', exitCode: 0 }));
+
+    const rt = createClaudeCliRuntime({
+      claudeBin: 'claude',
+      dangerouslySkipPermissions: false,
+      outputFormat: 'text',
+    });
+
+    for await (const _evt of rt.invoke({ prompt: 'p', model: 'opus', cwd: '/tmp' })) {
+      // drain
+    }
+
+    const callArgs = execaMock.mock.calls[0]?.[1] ?? [];
+    expect(callArgs).not.toContain('--max-budget-usd');
+  });
+
+  it('--append-system-prompt is passed when set', async () => {
+    const execaMock = execa as any;
+    execaMock.mockImplementation(() => makeProcessText({ stdout: 'ok', exitCode: 0 }));
+
+    const rt = createClaudeCliRuntime({
+      claudeBin: 'claude',
+      dangerouslySkipPermissions: false,
+      outputFormat: 'text',
+      appendSystemPrompt: 'You are Weston.',
+    });
+
+    for await (const _evt of rt.invoke({ prompt: 'p', model: 'opus', cwd: '/tmp' })) {
+      // drain
+    }
+
+    const callArgs = execaMock.mock.calls[0]?.[1] ?? [];
+    expect(callArgs).toContain('--append-system-prompt');
+    expect(callArgs[callArgs.indexOf('--append-system-prompt') + 1]).toBe('You are Weston.');
+  });
+
+  it('--append-system-prompt is omitted when unset', async () => {
+    const execaMock = execa as any;
+    execaMock.mockImplementation(() => makeProcessText({ stdout: 'ok', exitCode: 0 }));
+
+    const rt = createClaudeCliRuntime({
+      claudeBin: 'claude',
+      dangerouslySkipPermissions: false,
+      outputFormat: 'text',
+    });
+
+    for await (const _evt of rt.invoke({ prompt: 'p', model: 'opus', cwd: '/tmp' })) {
+      // drain
+    }
+
+    const callArgs = execaMock.mock.calls[0]?.[1] ?? [];
+    expect(callArgs).not.toContain('--append-system-prompt');
+  });
+
   it('stream-json emits image_data from streaming content blocks', async () => {
     const execaMock = execa as any;
     execaMock.mockImplementation(() => makeProcessStreamJson({
@@ -564,5 +678,66 @@ describe('one-shot with images', () => {
     // Should have --output-format stream-json added for images
     const outputFormatIdx = callArgs.lastIndexOf('--output-format');
     expect(callArgs[outputFormatIdx + 1]).toBe('stream-json');
+  });
+});
+
+describe('pool forwarding (multi-turn opts wiring)', () => {
+  it('forwards fallbackModel, maxBudgetUsd, and appendSystemPrompt to LongRunningProcess', async () => {
+    const execaMock = execa as any;
+    // The pool path will spawn a LongRunningProcess which calls execa internally.
+    // makeProcessText returns an immediately-resolved process, so the LRP detects a
+    // dead subprocess and falls back to one-shot. We verify both calls: the first
+    // (LRP spawn) should have multi-turn flags, the second (one-shot fallback) should
+    // have the same runtime opts.
+    execaMock.mockImplementation(() => {
+      return makeProcessText({ stdout: 'ok', exitCode: 0 });
+    });
+
+    const rt = createClaudeCliRuntime({
+      claudeBin: 'claude',
+      dangerouslySkipPermissions: true,
+      outputFormat: 'text',
+      fallbackModel: 'sonnet',
+      maxBudgetUsd: 10,
+      appendSystemPrompt: 'You are a helpful PA.',
+      multiTurn: true,
+      multiTurnMaxProcesses: 2,
+      multiTurnHangTimeoutMs: 1000,
+      multiTurnIdleTimeoutMs: 5000,
+    });
+
+    // Invoke with a sessionKey to trigger the pool path.
+    const events: any[] = [];
+    for await (const evt of rt.invoke({
+      prompt: 'test prompt',
+      model: 'opus',
+      cwd: '/tmp',
+      sessionKey: 'test-session',
+    })) {
+      events.push(evt);
+    }
+
+    // Must have at least 2 execa calls: LRP spawn + one-shot fallback.
+    expect(execaMock.mock.calls.length).toBeGreaterThanOrEqual(2);
+
+    // First call is the LRP spawn — must have --input-format stream-json (LRP signature).
+    const lrpArgs = execaMock.mock.calls[0]?.[1] ?? [];
+    expect(lrpArgs).toContain('--input-format');
+    expect(lrpArgs[lrpArgs.indexOf('--input-format') + 1]).toBe('stream-json');
+    expect(lrpArgs).toContain('--fallback-model');
+    expect(lrpArgs[lrpArgs.indexOf('--fallback-model') + 1]).toBe('sonnet');
+    expect(lrpArgs).toContain('--max-budget-usd');
+    expect(lrpArgs[lrpArgs.indexOf('--max-budget-usd') + 1]).toBe('10');
+    expect(lrpArgs).toContain('--append-system-prompt');
+    expect(lrpArgs[lrpArgs.indexOf('--append-system-prompt') + 1]).toBe('You are a helpful PA.');
+
+    // Second call is the one-shot fallback — should also carry the runtime opts.
+    const oneShotArgs = execaMock.mock.calls[1]?.[1] ?? [];
+    expect(oneShotArgs).toContain('--fallback-model');
+    expect(oneShotArgs[oneShotArgs.indexOf('--fallback-model') + 1]).toBe('sonnet');
+    expect(oneShotArgs).toContain('--max-budget-usd');
+    expect(oneShotArgs[oneShotArgs.indexOf('--max-budget-usd') + 1]).toBe('10');
+    expect(oneShotArgs).toContain('--append-system-prompt');
+    expect(oneShotArgs[oneShotArgs.indexOf('--append-system-prompt') + 1]).toBe('You are a helpful PA.');
   });
 });

@@ -4,7 +4,58 @@ import os from 'node:os';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BeadData } from '../beads/types.js';
 
-import { loadWorkspaceMemoryFile, loadDailyLogFiles, buildBeadContextSection, buildBeadThreadSection, resolveEffectiveTools, _resetToolsAuditState } from './prompt-common.js';
+import { loadWorkspacePaFiles, loadWorkspaceMemoryFile, loadDailyLogFiles, buildBeadContextSection, buildBeadThreadSection, resolveEffectiveTools, _resetToolsAuditState } from './prompt-common.js';
+
+describe('loadWorkspacePaFiles', () => {
+  const dirs: string[] = [];
+  afterEach(async () => {
+    for (const d of dirs) await fs.rm(d, { recursive: true, force: true });
+    dirs.length = 0;
+  });
+
+  it('returns empty array when skip is true', async () => {
+    const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'pc-test-'));
+    dirs.push(workspace);
+    await fs.writeFile(path.join(workspace, 'SOUL.md'), '# Soul', 'utf-8');
+    await fs.writeFile(path.join(workspace, 'IDENTITY.md'), '# ID', 'utf-8');
+
+    const files = await loadWorkspacePaFiles(workspace, { skip: true });
+    expect(files).toEqual([]);
+  });
+
+  it('returns PA files when skip is false', async () => {
+    const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'pc-test-'));
+    dirs.push(workspace);
+    await fs.writeFile(path.join(workspace, 'SOUL.md'), '# Soul', 'utf-8');
+    await fs.writeFile(path.join(workspace, 'IDENTITY.md'), '# ID', 'utf-8');
+
+    const files = await loadWorkspacePaFiles(workspace, { skip: false });
+    expect(files).toEqual([
+      path.join(workspace, 'SOUL.md'),
+      path.join(workspace, 'IDENTITY.md'),
+    ]);
+  });
+
+  it('returns PA files when opts is omitted', async () => {
+    const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'pc-test-'));
+    dirs.push(workspace);
+    await fs.writeFile(path.join(workspace, 'USER.md'), '# User', 'utf-8');
+
+    const files = await loadWorkspacePaFiles(workspace);
+    expect(files).toEqual([path.join(workspace, 'USER.md')]);
+  });
+
+  it('includes BOOTSTRAP.md before PA files when it exists', async () => {
+    const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'pc-test-'));
+    dirs.push(workspace);
+    await fs.writeFile(path.join(workspace, 'BOOTSTRAP.md'), '# Bootstrap', 'utf-8');
+    await fs.writeFile(path.join(workspace, 'SOUL.md'), '# Soul', 'utf-8');
+
+    const files = await loadWorkspacePaFiles(workspace);
+    expect(files[0]).toBe(path.join(workspace, 'BOOTSTRAP.md'));
+    expect(files[1]).toBe(path.join(workspace, 'SOUL.md'));
+  });
+});
 
 describe('loadWorkspaceMemoryFile', () => {
   const dirs: string[] = [];

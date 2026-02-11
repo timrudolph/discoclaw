@@ -1,6 +1,6 @@
 import { parseAllowChannelIds, parseAllowUserIds } from './discord/allowlist.js';
 
-const KNOWN_TOOLS = new Set(['Bash', 'Read', 'Edit', 'WebSearch', 'WebFetch']);
+export const KNOWN_TOOLS = new Set(['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep', 'WebSearch', 'WebFetch']);
 
 type ParseResult = {
   config: DiscoclawConfig;
@@ -81,6 +81,10 @@ export type DiscoclawConfig = {
   beadsSidebar: boolean;
   beadsAutoTag: boolean;
   beadsAutoTagModel: string;
+
+  runtimeFallbackModel?: string;
+  runtimeMaxBudgetUsd?: number;
+  appendSystemPrompt?: string;
 
   claudeBin: string;
   dangerouslySkipPermissions: boolean;
@@ -208,7 +212,7 @@ function parseAvatarPath(env: NodeJS.ProcessEnv, name: string): string | undefin
 
 function parseRuntimeTools(env: NodeJS.ProcessEnv, warnings: string[]): string[] {
   const raw = parseTrimmedString(env, 'RUNTIME_TOOLS');
-  if (!raw) return ['Bash', 'Read', 'Edit', 'WebSearch', 'WebFetch'];
+  if (!raw) return ['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep', 'WebSearch', 'WebFetch'];
 
   const tools = raw
     .split(/[,\s]+/g)
@@ -303,6 +307,24 @@ export function parseConfig(env: NodeJS.ProcessEnv): ParseResult {
       runtimeModel: parseTrimmedString(env, 'RUNTIME_MODEL') ?? 'opus',
       runtimeTools: parseRuntimeTools(env, warnings),
       runtimeTimeoutMs: parsePositiveNumber(env, 'RUNTIME_TIMEOUT_MS', 10 * 60_000),
+      runtimeFallbackModel: parseTrimmedString(env, 'RUNTIME_FALLBACK_MODEL'),
+      runtimeMaxBudgetUsd: (() => {
+        const raw = parseTrimmedString(env, 'RUNTIME_MAX_BUDGET_USD');
+        if (raw == null) return undefined;
+        const n = Number(raw);
+        if (!Number.isFinite(n) || n <= 0) {
+          throw new Error(`RUNTIME_MAX_BUDGET_USD must be a positive number, got "${raw}"`);
+        }
+        return n;
+      })(),
+      appendSystemPrompt: (() => {
+        const raw = parseTrimmedString(env, 'CLAUDE_APPEND_SYSTEM_PROMPT');
+        if (raw == null) return undefined;
+        if (raw.length > 4000) {
+          throw new Error(`CLAUDE_APPEND_SYSTEM_PROMPT exceeds 4000 char limit (got ${raw.length})`);
+        }
+        return raw;
+      })(),
 
       dataDir: parseTrimmedString(env, 'DISCOCLAW_DATA_DIR'),
       contentDirOverride: parseTrimmedString(env, 'DISCOCLAW_CONTENT_DIR'),

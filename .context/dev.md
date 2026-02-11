@@ -73,7 +73,7 @@ Copy `.env.example` -> `.env`. See that file for inline comments.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `RUNTIME_MODEL` | `opus` | Model name or alias passed to the CLI |
-| `RUNTIME_TOOLS` | `Bash,Read,Edit,WebSearch,WebFetch` | Comma-separated tool list |
+| `RUNTIME_TOOLS` | `Bash,Read,Write,Edit,Glob,Grep,WebSearch,WebFetch` | Comma-separated tool list |
 | `RUNTIME_TIMEOUT_MS` | `600000` | Per-invocation timeout in milliseconds |
 | `DISCOCLAW_RUNTIME_SESSIONS` | `1` | Persist Claude session IDs across messages |
 | `DISCOCLAW_MESSAGE_HISTORY_BUDGET` | `3000` | Char budget for recent conversation history in prompts (0 = disabled) |
@@ -86,6 +86,9 @@ Copy `.env.example` -> `.env`. See that file for inline comments.
 | `DISCOCLAW_DURABLE_MAX_ITEMS` | `200` | Max durable items per user |
 | `DISCOCLAW_MEMORY_COMMANDS_ENABLED` | `1` | Enable `!memory` commands (show/remember/forget/reset) |
 | `DISCOCLAW_STATUS_CHANNEL` | *(empty — disabled)* | Channel name or ID for status embeds (bot online/offline, errors) |
+| `RUNTIME_FALLBACK_MODEL` | *(unset)* | Auto-fallback model when primary is overloaded (e.g. `sonnet`) |
+| `RUNTIME_MAX_BUDGET_USD` | *(unset)* | Max USD per CLI process; one-shot = per invocation, multi-turn = per session lifetime |
+| `CLAUDE_APPEND_SYSTEM_PROMPT` | *(unset)* | Append to system prompt (max 4000 chars); skips workspace PA file reads when set |
 | `DISCOCLAW_CRON_ENABLED` | `1` | Master switch for the cron subsystem (forum-based scheduled tasks) |
 | `DISCOCLAW_CRON_FORUM` | *(empty)* | Forum channel name or ID for cron definitions |
 | `DISCOCLAW_CRON_MODEL` | `haiku` | Model used to parse natural-language cron definitions |

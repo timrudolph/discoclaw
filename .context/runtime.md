@@ -13,6 +13,9 @@ See: `src/runtime/types.ts`
   claude -p --model <id|alias>
     [--dangerously-skip-permissions]          # when CLAUDE_DANGEROUSLY_SKIP_PERMISSIONS=1
     [--strict-mcp-config]                     # when CLAUDE_STRICT_MCP_CONFIG=1
+    [--fallback-model <alias>]               # when RUNTIME_FALLBACK_MODEL is set
+    [--max-budget-usd <number>]              # when RUNTIME_MAX_BUDGET_USD is set
+    [--append-system-prompt <text>]          # when CLAUDE_APPEND_SYSTEM_PROMPT is set
     [--debug-file <path>]                     # when CLAUDE_DEBUG_FILE is set
     [--session-id <uuid>]                     # when sessions are enabled
     [--add-dir <dir> ...]                     # group CWD mode
@@ -27,7 +30,9 @@ See: `src/runtime/types.ts`
   - `CLAUDE_OUTPUT_FORMAT=text` (fallback if your local CLI doesn't support stream-json)
 
 ## Tool Surface
-- Today Discoclaw passes a basic tool list and relies on `--dangerously-skip-permissions` in production.
+- Default tools: `Bash, Read, Write, Edit, Glob, Grep, WebSearch, WebFetch` (8 tools).
+- `Glob` + `Grep` are purpose-built for file search — faster than `find`/`grep` via Bash.
+- `Write` enables proper file creation (previously required Bash echo/cat workarounds).
 - If/when we add OpenAI/Gemini adapters:
   - Start with **analysis-only** routes (no tools).
   - Add a tool layer only if we explicitly decide we need full parity.
@@ -40,10 +45,12 @@ See: `src/runtime/types.ts`
 Tiers:
 | Tier | Tools |
 |------|-------|
-| `readonly` | `Read, WebSearch, WebFetch` |
-| `standard` | `Read, Edit, WebSearch, WebFetch` |
-| `full` | `Bash, Read, Edit, WebSearch, WebFetch` |
+| `readonly` | `Read, Glob, Grep, WebSearch, WebFetch` |
+| `standard` | `Read, Edit, Glob, Grep, WebSearch, WebFetch` |
+| `full` | `Bash, Read, Write, Edit, Glob, Grep, WebSearch, WebFetch` |
 | `custom` | User-specified `tools` array in the JSON |
+
+Note: `Write` is excluded from `standard` tier (non-destructive). Included in `full` alongside Bash.
 
 Example: `{ "tier": "standard", "note": "Never modify files outside workspace." }`
 
@@ -60,6 +67,18 @@ Two opt-in features for better Discord UX during tool-heavy invocations:
 | `DISCOCLAW_TOOL_AWARE_STREAMING` | `0` | Buffer text during tool execution, show activity indicators, stream final answer cleanly |
 
 Both require `CLAUDE_OUTPUT_FORMAT=stream-json` for structured events.
+
+## Resilience & Cost Controls
+
+| Env Var | Default | Purpose |
+|---------|---------|---------|
+| `RUNTIME_FALLBACK_MODEL` | *(unset)* | Auto-fallback model when primary is overloaded (e.g. `sonnet`) |
+| `RUNTIME_MAX_BUDGET_USD` | *(unset)* | Max USD per CLI process. One-shot = per invocation. Multi-turn = per session lifetime |
+| `CLAUDE_APPEND_SYSTEM_PROMPT` | *(unset)* | Append text to Claude's system prompt (max 4000 chars) |
+
+**Budget semantics:** For multi-turn sessions, budget accumulates across turns and cannot be reset mid-session. Recommend $5-10 for multi-turn.
+
+**Append system prompt:** When set, workspace PA files (SOUL.md, IDENTITY.md, USER.md, TOOLS.md) are skipped from the context file list (their content is already in the system prompt). Base context files (core.md, discord.md, safety.md etc.) and channel-specific context are unaffected. **Note:** Do not set this on first run before `workspace/BOOTSTRAP.md` has been consumed — the skip logic also bypasses BOOTSTRAP.md loading.
 
 - **Session scanner** (`src/runtime/session-scanner.ts`): watches `~/.claude/projects/<escaped-cwd>/<session-id>.jsonl`, skips pre-existing content, degrades gracefully if the file never appears.
 - **Tool-aware queue** (`src/discord/tool-aware-queue.ts`): state machine that suppresses narration text before tools, shows human-readable activity labels (from `src/runtime/tool-labels.ts`), and streams the final answer after all tool use completes.

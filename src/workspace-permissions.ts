@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { KNOWN_TOOLS } from './config.js';
 
 export type PermissionTier = 'readonly' | 'standard' | 'full' | 'custom';
 
@@ -13,12 +14,10 @@ const VALID_TIERS: ReadonlySet<string> = new Set(['readonly', 'standard', 'full'
 
 export const MAX_NOTE_LENGTH = 500;
 
-const KNOWN_TOOLS = new Set(['Bash', 'Read', 'Edit', 'WebSearch', 'WebFetch']);
-
 export const TIER_TOOLS: Record<Exclude<PermissionTier, 'custom'>, string[]> = {
-  readonly: ['Read', 'WebSearch', 'WebFetch'],
-  standard: ['Read', 'Edit', 'WebSearch', 'WebFetch'],
-  full: ['Bash', 'Read', 'Edit', 'WebSearch', 'WebFetch'],
+  readonly: ['Read', 'Glob', 'Grep', 'WebSearch', 'WebFetch'],
+  standard: ['Read', 'Edit', 'Glob', 'Grep', 'WebSearch', 'WebFetch'],
+  full: ['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep', 'WebSearch', 'WebFetch'],
 };
 
 type LogFn = { warn?: (obj: Record<string, unknown>, msg: string) => void };
