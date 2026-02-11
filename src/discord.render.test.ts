@@ -9,6 +9,7 @@ import {
 } from './discord.js';
 
 const ZWS = '\u200b';
+const DEFAULT_PAD = 60; // maxWidth(56) + 4
 
 /** Extract the content lines between the opening and closing fences (for renderDiscordTail). */
 function contentLines(rendered: string): string[] {
@@ -33,28 +34,28 @@ function activityContentLines(rendered: string): string[] {
 // renderDiscordTail
 // ---------------------------------------------------------------------------
 describe('renderDiscordTail', () => {
-  it('empty string → 8 ZWS lines', () => {
+  it('empty string → 8 space-padded lines', () => {
     const out = renderDiscordTail('');
     const lines = contentLines(out);
     expect(lines).toHaveLength(8);
-    expect(lines.every((l) => l === ZWS)).toBe(true);
+    expect(lines.every((l) => l === ' '.repeat(DEFAULT_PAD))).toBe(true);
   });
 
-  it('single line → 7 ZWS + 1 content line', () => {
+  it('single line → 7 padded + 1 content line', () => {
     const out = renderDiscordTail('hello');
     const lines = contentLines(out);
     expect(lines).toHaveLength(8);
-    expect(lines.slice(0, 7).every((l) => l === ZWS)).toBe(true);
-    expect(lines[7]).toBe('hello');
+    expect(lines.slice(0, 7).every((l) => l === ' '.repeat(DEFAULT_PAD))).toBe(true);
+    expect(lines[7]).toBe('hello'.padEnd(DEFAULT_PAD));
   });
 
-  it('exactly 8 lines → no padding', () => {
+  it('exactly 8 lines → no blank padding, all padEnd', () => {
     const input = Array.from({ length: 8 }, (_, i) => `line${i}`).join('\n');
     const out = renderDiscordTail(input);
     const lines = contentLines(out);
     expect(lines).toHaveLength(8);
-    expect(lines[0]).toBe('line0');
-    expect(lines[7]).toBe('line7');
+    expect(lines[0]).toBe('line0'.padEnd(DEFAULT_PAD));
+    expect(lines[7]).toBe('line7'.padEnd(DEFAULT_PAD));
   });
 
   it('more than 8 lines → only last 8', () => {
@@ -62,8 +63,8 @@ describe('renderDiscordTail', () => {
     const out = renderDiscordTail(input);
     const lines = contentLines(out);
     expect(lines).toHaveLength(8);
-    expect(lines[0]).toBe('line4');
-    expect(lines[7]).toBe('line11');
+    expect(lines[0]).toBe('line4'.padEnd(DEFAULT_PAD));
+    expect(lines[7]).toBe('line11'.padEnd(DEFAULT_PAD));
   });
 
   it('triple backticks in input are escaped', () => {
@@ -77,9 +78,9 @@ describe('renderDiscordTail', () => {
     const out = renderDiscordTail('line1\r\nline2\r\nline3');
     const lines = contentLines(out);
     expect(lines).toHaveLength(8);
-    expect(lines[5]).toBe('line1');
-    expect(lines[6]).toBe('line2');
-    expect(lines[7]).toBe('line3');
+    expect(lines[5]).toBe('line1'.padEnd(DEFAULT_PAD));
+    expect(lines[6]).toBe('line2'.padEnd(DEFAULT_PAD));
+    expect(lines[7]).toBe('line3'.padEnd(DEFAULT_PAD));
   });
 
   it('empty lines in input are filtered out', () => {
@@ -87,16 +88,16 @@ describe('renderDiscordTail', () => {
     const lines = contentLines(out);
     expect(lines).toHaveLength(8);
     // Only non-empty lines kept: a, b, c
-    expect(lines[5]).toBe('a');
-    expect(lines[6]).toBe('b');
-    expect(lines[7]).toBe('c');
+    expect(lines[5]).toBe('a'.padEnd(DEFAULT_PAD));
+    expect(lines[6]).toBe('b'.padEnd(DEFAULT_PAD));
+    expect(lines[7]).toBe('c'.padEnd(DEFAULT_PAD));
   });
 
   it('custom maxLines is respected', () => {
     const out = renderDiscordTail('hello', 4);
     const lines = contentLines(out);
     expect(lines).toHaveLength(4);
-    expect(lines[3]).toBe('hello');
+    expect(lines[3]).toBe('hello'.padEnd(DEFAULT_PAD));
   });
 
   it('maxLines = 0 → slice(-0) returns all non-empty lines (1 line for single-word input)', () => {
@@ -105,14 +106,14 @@ describe('renderDiscordTail', () => {
     const out = renderDiscordTail('hello', 0);
     const lines = contentLines(out);
     expect(lines).toHaveLength(1);
-    expect(lines[0]).toBe('hello');
+    expect(lines[0]).toBe('hello'.padEnd(DEFAULT_PAD));
   });
 
   it('maxLines = 1 → one content line', () => {
     const out = renderDiscordTail('a\nb\nc', 1);
     const lines = contentLines(out);
     expect(lines).toHaveLength(1);
-    expect(lines[0]).toBe('c');
+    expect(lines[0]).toBe('c'.padEnd(DEFAULT_PAD));
   });
 
   it('wraps in ```text fences', () => {
@@ -126,29 +127,38 @@ describe('renderDiscordTail', () => {
     const out = renderDiscordTail(null as unknown as string);
     const lines = contentLines(out);
     expect(lines).toHaveLength(8);
-    expect(lines.every((l) => l === ZWS)).toBe(true);
+    expect(lines.every((l) => l === ' '.repeat(DEFAULT_PAD))).toBe(true);
   });
 
-  it('long lines are truncated to maxWidth with ellipsis', () => {
+  it('long lines are truncated to maxWidth then padded to padWidth', () => {
     const long = 'x'.repeat(100);
     const out = renderDiscordTail(long, 8, 56);
     const lines = contentLines(out);
-    expect(lines[7].length).toBe(56);
-    expect(lines[7].endsWith('\u2026')).toBe(true);
+    expect(lines[7].length).toBe(DEFAULT_PAD);
+    expect(lines[7].trimEnd().endsWith('\u2026')).toBe(true);
   });
 
-  it('lines at or under maxWidth are not truncated', () => {
+  it('lines at or under maxWidth are padded to padWidth', () => {
     const exact = 'y'.repeat(56);
     const out = renderDiscordTail(exact, 8, 56);
     const lines = contentLines(out);
-    expect(lines[7]).toBe(exact);
+    expect(lines[7]).toBe(exact.padEnd(DEFAULT_PAD));
   });
 
-  it('ZWS padding lines are not affected by maxWidth', () => {
+  it('padding lines use spaces at padWidth', () => {
+    const padWidth = 10 + 4; // maxWidth + 4
     const out = renderDiscordTail('short', 8, 10);
     const lines = contentLines(out);
-    // All padding lines should still be ZWS.
-    expect(lines.slice(0, 7).every((l) => l === ZWS)).toBe(true);
+    expect(lines.slice(0, 7).every((l) => l === ' '.repeat(padWidth))).toBe(true);
+  });
+
+  it('all lines in the code block are the same width', () => {
+    const input = 'short\na much longer line of text here\nx';
+    const out = renderDiscordTail(input);
+    const lines = contentLines(out);
+    const widths = new Set(lines.map((l) => l.length));
+    expect(widths.size).toBe(1);
+    expect(widths.has(DEFAULT_PAD)).toBe(true);
   });
 });
 
@@ -156,12 +166,12 @@ describe('renderDiscordTail', () => {
 // renderActivityTail
 // ---------------------------------------------------------------------------
 describe('renderActivityTail', () => {
-  it('normal label → bold above, 8 ZWS in block', () => {
+  it('normal label → bold above, 8 space-padded lines in block', () => {
     const out = renderActivityTail('(working...)');
     expect(activityBoldLabel(out)).toBe('**(working...)**');
     const lines = activityContentLines(out);
     expect(lines).toHaveLength(8);
-    expect(lines.every((l) => l === ZWS)).toBe(true);
+    expect(lines.every((l) => l === ' '.repeat(DEFAULT_PAD))).toBe(true);
   });
 
   it('label with triple backticks is escaped in bold context', () => {
@@ -170,10 +180,10 @@ describe('renderActivityTail', () => {
     expect(activityBoldLabel(out)).toBe('**reading \\`\\`\\`file\\`\\`\\`**');
     // Triple backticks in the code block body are also escaped
     expect(out).not.toContain('```file```');
-    // Code block content is all ZWS
+    // Code block content is all space-padded
     const lines = activityContentLines(out);
     expect(lines).toHaveLength(8);
-    expect(lines.every((l) => l === ZWS)).toBe(true);
+    expect(lines.every((l) => l === ' '.repeat(DEFAULT_PAD))).toBe(true);
   });
 
   it('label with newline uses only first non-empty line', () => {
@@ -181,15 +191,15 @@ describe('renderActivityTail', () => {
     expect(activityBoldLabel(out)).toBe('**first**');
     const lines = activityContentLines(out);
     expect(lines).toHaveLength(8);
-    expect(lines.every((l) => l === ZWS)).toBe(true);
+    expect(lines.every((l) => l === ' '.repeat(DEFAULT_PAD))).toBe(true);
   });
 
-  it('label that is only newlines → empty bold, 8 ZWS lines', () => {
+  it('label that is only newlines → empty bold, 8 space-padded lines', () => {
     const out = renderActivityTail('\n');
     expect(activityBoldLabel(out)).toBe('****');
     const lines = activityContentLines(out);
     expect(lines).toHaveLength(8);
-    expect(lines.every((l) => l === ZWS)).toBe(true);
+    expect(lines.every((l) => l === ' '.repeat(DEFAULT_PAD))).toBe(true);
   });
 
   it('custom maxLines is respected', () => {
@@ -197,7 +207,7 @@ describe('renderActivityTail', () => {
     expect(activityBoldLabel(out)).toBe('**label**');
     const lines = activityContentLines(out);
     expect(lines).toHaveLength(4);
-    expect(lines.every((l) => l === ZWS)).toBe(true);
+    expect(lines.every((l) => l === ' '.repeat(DEFAULT_PAD))).toBe(true);
   });
 
   it('maxLines = 0 → bold label, empty code block', () => {
@@ -209,12 +219,12 @@ describe('renderActivityTail', () => {
     expect(lines[0]).toBe('');
   });
 
-  it('maxLines = 1 → bold label, one ZWS line in block', () => {
+  it('maxLines = 1 → bold label, one space-padded line in block', () => {
     const out = renderActivityTail('label', 1);
     expect(activityBoldLabel(out)).toBe('**label**');
     const lines = activityContentLines(out);
     expect(lines).toHaveLength(1);
-    expect(lines[0]).toBe(ZWS);
+    expect(lines[0]).toBe(' '.repeat(DEFAULT_PAD));
   });
 
   it('starts with bold label, then ```text fences', () => {
