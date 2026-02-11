@@ -264,7 +264,7 @@ export function parseConfig(env: NodeJS.ProcessEnv): ParseResult {
   const discordActionsModeration = parseBoolean(env, 'DISCOCLAW_DISCORD_ACTIONS_MODERATION', false);
   const discordActionsPolls = parseBoolean(env, 'DISCOCLAW_DISCORD_ACTIONS_POLLS', false);
   const discordActionsBeads = parseBoolean(env, 'DISCOCLAW_DISCORD_ACTIONS_BEADS', false);
-  const discordActionsCrons = parseBoolean(env, 'DISCOCLAW_DISCORD_ACTIONS_CRONS', false);
+  const discordActionsCrons = parseBoolean(env, 'DISCOCLAW_DISCORD_ACTIONS_CRONS', true);
   const discordActionsBotProfile = parseBoolean(env, 'DISCOCLAW_DISCORD_ACTIONS_BOT_PROFILE', false);
 
   if (!discordActionsEnabled) {
@@ -332,7 +332,7 @@ export function parseConfig(env: NodeJS.ProcessEnv): ParseResult {
       statusChannel: parseTrimmedString(env, 'DISCOCLAW_STATUS_CHANNEL'),
       guildId: parseTrimmedString(env, 'DISCORD_GUILD_ID'),
 
-      cronEnabled: parseBoolean(env, 'DISCOCLAW_CRON_ENABLED', false),
+      cronEnabled: parseBoolean(env, 'DISCOCLAW_CRON_ENABLED', true),
       cronForum: parseTrimmedString(env, 'DISCOCLAW_CRON_FORUM'),
       cronModel: parseTrimmedString(env, 'DISCOCLAW_CRON_MODEL') ?? 'haiku',
       cronAutoTag: parseBoolean(env, 'DISCOCLAW_CRON_AUTO_TAG', false),
