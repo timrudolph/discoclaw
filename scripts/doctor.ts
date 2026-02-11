@@ -78,7 +78,22 @@ if (bdPath) {
   console.log(`  ℹ bd CLI not found (beads task tracking will be inactive until bd is installed)`);
 }
 
-// 4. .env exists
+// 4. Pre-push hook (informational)
+const hooksDir = (() => {
+  try {
+    return execSync('git config --get core.hooksPath', { encoding: 'utf8' }).trim();
+  } catch {
+    return path.join(root, '.git', 'hooks');
+  }
+})();
+const prePushHook = path.join(hooksDir, 'pre-push');
+if (fs.existsSync(prePushHook)) {
+  ok('pre-push hook installed');
+} else {
+  console.log('  ℹ pre-push hook not installed (run: pnpm install)');
+}
+
+// 5. .env exists
 const envPath = path.join(root, '.env');
 if (fs.existsSync(envPath)) {
   ok('.env file exists');
@@ -86,7 +101,7 @@ if (fs.existsSync(envPath)) {
   fail('.env file missing', 'Run: cp .env.example .env');
 }
 
-// 5. Required env vars
+// 6. Required env vars
 const requiredVars = ['DISCORD_TOKEN', 'DISCORD_ALLOW_USER_IDS'];
 if (fs.existsSync(envPath)) {
   const envContent = fs.readFileSync(envPath, 'utf8');
