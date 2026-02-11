@@ -17,6 +17,7 @@ Legend: **done** | *stub* | ~~cut~~
 | PID lock (single instance) | `src/pidlock.ts` | **done** |
 | Graceful shutdown | `src/index.ts` | **done** |
 | Streaming + fence-safe chunking (2 000 char) | `src/discord.ts` | **done** |
+| Image input (Discord attachments → Claude) | `src/discord/image-download.ts` | **done** |
 
 ## 2. Security
 
@@ -26,6 +27,7 @@ Legend: **done** | *stub* | ~~cut~~
 | Channel allowlist (optional) | `src/discord/allowlist.ts` | **done** |
 | Workspace permissions (readonly/standard/full/custom) | `src/workspace-permissions.ts` | **done** |
 | External content = data, not instructions | CLAUDE.md + prompts | **done** |
+| Image download SSRF protection (host allowlist, redirect rejection) | `src/discord/image-download.ts` | **done** |
 
 ## 3. Runtime Adapters (`src/runtime/`)
 

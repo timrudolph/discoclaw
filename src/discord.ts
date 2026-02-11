@@ -454,6 +454,7 @@ export function createMessageCreateHandler(params: Omit<BotParams, 'token'>, que
               }
               if (dlResult.errors.length > 0) {
                 params.log?.warn({ errors: dlResult.errors }, 'discord:image download errors');
+                metrics.increment('discord.image_download.errors', dlResult.errors.length);
                 prompt += `\n(Note: ${dlResult.errors.length} image(s) could not be loaded: ${dlResult.errors.join('; ')})`;
               }
             } catch (err) {
@@ -539,6 +540,8 @@ export function createMessageCreateHandler(params: Omit<BotParams, 'token'>, que
               sessionKey,
               tools: effectiveTools,
               timeoutMs: params.runtimeTimeoutMs,
+              // Images only on initial turn — follow-ups are text-only continuations
+              // with action results; re-downloading would waste time and bandwidth.
               images: followUpDepth === 0 ? inputImages : undefined,
             })) {
               if (taq) {

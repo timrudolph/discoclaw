@@ -68,7 +68,8 @@ export function resolveMediaType(attachment: AttachmentLike): string | null {
 
 /** Sanitize an attachment filename for error messages (no URLs or query params). */
 function safeName(attachment: AttachmentLike): string {
-  return attachment.name ?? 'unknown';
+  const raw = attachment.name ?? 'unknown';
+  return raw.replace(/[\x00-\x1f]/g, '').slice(0, 100).trim() || 'unknown';
 }
 
 /**
@@ -102,6 +103,7 @@ export async function downloadAttachment(
   try {
     const response = await fetch(attachment.url, {
       signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
+      redirect: 'error',
     });
 
     if (!response.ok) {
@@ -123,9 +125,13 @@ export async function downloadAttachment(
         mediaType,
       },
     };
-  } catch (err: any) {
-    if (err?.name === 'TimeoutError' || err?.name === 'AbortError') {
+  } catch (err: unknown) {
+    const errObj = err instanceof Error ? err : null;
+    if (errObj?.name === 'TimeoutError' || errObj?.name === 'AbortError') {
       return { ok: false, error: `${name}: download timed out` };
+    }
+    if (errObj?.name === 'TypeError' && String(errObj.message).includes('redirect')) {
+      return { ok: false, error: `${name}: blocked (unexpected redirect)` };
     }
     return { ok: false, error: `${name}: download failed` };
   }
@@ -159,7 +165,7 @@ export async function downloadMessageImages(
 
   for (const item of toDownload) {
     const size = item.attachment.size ?? 0;
-    if (estimatedTotal + size > MAX_TOTAL_BYTES && withinBudget.length > 0) {
+    if (estimatedTotal + size > MAX_TOTAL_BYTES) {
       errors.push(`${safeName(item.attachment)}: skipped (total size limit exceeded)`);
       continue;
     }

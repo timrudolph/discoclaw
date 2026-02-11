@@ -257,21 +257,19 @@ export function createClaudeCliRuntime(opts: ClaudeCliRuntimeOpts): RuntimeAdapt
 
     // When images are present, switch to stdin-based input with stream-json.
     const hasImages = params.images && params.images.length > 0;
+    // Images require stream-json for content block parsing; compute once before arg construction.
+    const effectiveOutputFormat = hasImages ? 'stream-json' as const : opts.outputFormat;
 
     if (hasImages) {
       args.push('--input-format', 'stream-json');
     }
 
-    if (opts.outputFormat) {
-      args.push('--output-format', opts.outputFormat);
+    if (effectiveOutputFormat) {
+      args.push('--output-format', effectiveOutputFormat);
     }
 
-    // Ensure stream-json output includes partial messages for streaming.
-    if (opts.outputFormat === 'stream-json') {
+    if (effectiveOutputFormat === 'stream-json') {
       args.push('--include-partial-messages');
-    } else if (hasImages) {
-      // Images require stream-json output format for content block parsing.
-      args.push('--output-format', 'stream-json', '--include-partial-messages');
     }
 
     // Tool flags are runtime-specific; keep optional and configurable.
@@ -318,16 +316,21 @@ export function createClaudeCliRuntime(opts: ClaudeCliRuntimeOpts): RuntimeAdapt
 
     // When images are present, write the prompt + images to stdin as NDJSON, then close.
     if (hasImages && subprocess.stdin) {
-      const content = [
-        { type: 'text', text: params.prompt },
-        ...params.images!.map((img) => ({
-          type: 'image',
-          source: { type: 'base64', media_type: img.mediaType, data: img.base64 },
-        })),
-      ];
-      const stdinMsg = JSON.stringify({ type: 'user', message: { role: 'user', content } }) + '\n';
-      subprocess.stdin.write(stdinMsg);
-      subprocess.stdin.end();
+      try {
+        const content = [
+          { type: 'text', text: params.prompt },
+          ...params.images!.map((img) => ({
+            type: 'image',
+            source: { type: 'base64', media_type: img.mediaType, data: img.base64 },
+          })),
+        ];
+        const stdinMsg = JSON.stringify({ type: 'user', message: { role: 'user', content } }) + '\n';
+        subprocess.stdin.write(stdinMsg);
+        subprocess.stdin.end();
+      } catch {
+        // stdin write failed — process will run without input and exit with error.
+        // The existing error/exit handling below will surface a message.
+      }
     }
 
     activeSubprocesses.add(subprocess);
@@ -367,8 +370,6 @@ export function createClaudeCliRuntime(opts: ClaudeCliRuntimeOpts): RuntimeAdapt
       scanner.start().catch((err) => opts.log?.debug({ err }, 'session-scanner: start failed'));
     }
 
-    // When images forced stream-json, override the effective output format for parsing.
-    const effectiveOutputFormat = hasImages ? 'stream-json' : opts.outputFormat;
     let mergedStdout = '';
     let merged = '';
     let resultText = '';  // fallback from "result" event if no deltas were extracted

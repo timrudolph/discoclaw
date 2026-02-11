@@ -45,6 +45,10 @@ describe('resolveMediaType', () => {
   it('returns null when no contentType or name', () => {
     expect(resolveMediaType({ url: 'https://cdn.discordapp.com/a' })).toBeNull();
   });
+
+  it('handles uppercase MIME types', () => {
+    expect(resolveMediaType({ url: 'https://cdn.discordapp.com/a.png', contentType: 'IMAGE/PNG' })).toBe('image/png');
+  });
 });
 
 describe('downloadAttachment', () => {
@@ -179,6 +183,38 @@ describe('downloadAttachment', () => {
     if (!result.ok) expect(result.error).toContain('invalid URL');
   });
 
+  it('rejects redirected responses', async () => {
+    const redirectErr = new TypeError('fetch failed: redirect mode is set to error');
+    (globalThis.fetch as any).mockRejectedValue(redirectErr);
+
+    const result = await downloadAttachment(
+      { url: 'https://cdn.discordapp.com/attachments/123/456/photo.png', name: 'photo.png' },
+      'image/png',
+    );
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain('blocked (unexpected redirect)');
+  });
+
+  it('handles zero-byte image', async () => {
+    const data = Buffer.alloc(0);
+    (globalThis.fetch as any).mockResolvedValue({
+      ok: true,
+      arrayBuffer: () => Promise.resolve(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength)),
+    });
+
+    const result = await downloadAttachment(
+      { url: 'https://cdn.discordapp.com/attachments/123/456/empty.png', name: 'empty.png', size: 0 },
+      'image/png',
+    );
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.image.base64).toBe('');
+      expect(result.image.mediaType).toBe('image/png');
+    }
+  });
+
   it('error messages are sanitized — no raw URLs', async () => {
     (globalThis.fetch as any).mockResolvedValue({ ok: false, status: 500 });
 
@@ -281,6 +317,22 @@ describe('downloadMessageImages', () => {
     const result = await downloadMessageImages([]);
     expect(result.images).toHaveLength(0);
     expect(result.errors).toHaveLength(0);
+  });
+
+  it('rejects single attachment exceeding total byte cap', async () => {
+    const data = Buffer.from('img');
+    (globalThis.fetch as any).mockResolvedValue({
+      ok: true,
+      arrayBuffer: () => Promise.resolve(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength)),
+    });
+
+    const result = await downloadMessageImages([
+      makeAttachment('huge.png', 'image/png', 60 * 1024 * 1024), // 60 MB — exceeds 50 MB total cap
+    ]);
+
+    expect(result.images).toHaveLength(0);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toContain('total size limit');
   });
 
   it('collects errors from individual failed downloads', async () => {

@@ -502,6 +502,35 @@ describe('one-shot with images', () => {
     expect(callOpts.stdin).toBe('ignore');
   });
 
+  it('no duplicate --output-format when images override text format', async () => {
+    const execaMock = execa as any;
+    execaMock.mockImplementation(() => makeProcessStreamJsonWithStdin({
+      lines: [
+        JSON.stringify({ type: 'result', result: 'ok' }),
+      ],
+      exitCode: 0,
+    }));
+
+    const rt = createClaudeCliRuntime({
+      claudeBin: 'claude',
+      dangerouslySkipPermissions: true,
+      outputFormat: 'text',
+    });
+
+    for await (const _evt of rt.invoke({
+      prompt: 'describe',
+      model: 'opus',
+      cwd: '/tmp',
+      images: [{ base64: 'abc', mediaType: 'image/jpeg' }],
+    })) {
+      // drain
+    }
+
+    const callArgs = execaMock.mock.calls[0]?.[1] ?? [];
+    const outputFormatCount = callArgs.filter((a: string) => a === '--output-format').length;
+    expect(outputFormatCount).toBe(1);
+  });
+
   it('images with text outputFormat forces stream-json output', async () => {
     const execaMock = execa as any;
     execaMock.mockImplementation(() => makeProcessStreamJsonWithStdin({

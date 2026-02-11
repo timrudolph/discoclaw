@@ -89,7 +89,44 @@ Known limitations:
 - GitHub issue #3187 reports that multi-turn stdin can hang after the first message. Mitigated by automatic hang detection + fallback.
 - Prompt construction is unchanged (full context sent every turn). Optimizing to skip redundant context is a follow-up.
 
-## Image Pipeline
+## Image Input (Discord → Claude)
+
+When a Discord message or reaction target has image attachments (PNG, JPEG, WebP, GIF), they are downloaded and sent to Claude Code as base64-encoded image content blocks via `--input-format stream-json` stdin.
+
+### How it works
+
+1. **Filtering** — `resolveMediaType()` checks the attachment's `contentType` (lowercased) or falls back to file extension. Non-image attachments are surfaced as plain URLs in the prompt text.
+2. **Validation** — Host allowlist (`cdn.discordapp.com`, `media.discordapp.net`), HTTPS-only, redirect rejection (`redirect: 'error'`), per-image and total size caps.
+3. **Download** — `downloadAttachment()` fetches the image with a 10 s timeout, post-checks actual size, and returns base64.
+4. **Delivery** — The runtime adapter writes a `stream-json` stdin message containing `[{ type: 'text', text: prompt }, { type: 'image', source: { type: 'base64', ... } }, ...]`. When images are present, `--output-format` is forced to `stream-json` regardless of the configured format.
+
+### Security controls
+
+| Control | Detail |
+|---------|--------|
+| Host allowlist | Only Discord CDN hosts are permitted (SSRF protection) |
+| HTTPS only | HTTP URLs are rejected |
+| Redirect rejection | `fetch()` uses `redirect: 'error'` — no following redirects to internal hosts |
+| Per-image size cap | 20 MB (`MAX_IMAGE_BYTES`), checked from metadata pre-download and from buffer post-download |
+| Total size cap | 50 MB across all images in one message (`MAX_TOTAL_BYTES`) |
+| Per-invocation cap | 10 images (`MAX_IMAGES_PER_INVOCATION`) |
+| Download timeout | 10 s per image (`DOWNLOAD_TIMEOUT_MS`) |
+| Filename sanitization | Control chars stripped, truncated to 100 chars in error messages |
+
+### Key files
+
+| File | Role |
+|------|------|
+| `src/discord/image-download.ts` | Download, validate, base64-encode Discord attachments |
+| `src/runtime/claude-code-cli.ts` | Stdin pipe construction, `effectiveOutputFormat` override |
+| `src/discord.ts` | Message handler: download images, pass to runtime, images only on initial turn |
+| `src/discord/reaction-handler.ts` | Reaction handler: same download flow, also surfaces non-image attachment URLs |
+
+### Follow-up depth gating
+
+Images are only sent on the initial invocation (`followUpDepth === 0`). Auto-follow-up turns (triggered by query actions) are text-only — re-downloading images would waste time and bandwidth.
+
+## Image Output (Claude → Discord)
 
 Any `image` content block in Claude Code's stream-json output is automatically captured and delivered as a Discord file attachment. Claude models don't natively generate images — images only appear when an MCP tool returns image content blocks.
 
