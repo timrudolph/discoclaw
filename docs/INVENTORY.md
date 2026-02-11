@@ -159,4 +159,4 @@ All actions are gated by category env flags (off by default except channels).
 - [ ] **Additional runtime adapters** — OpenAI-compatible and/or Gemini so the project isn't locked to Claude CLI.
 - [ ] **Runtime adapter selection via env** — e.g. `RUNTIME_ADAPTER=claude-cli|openai|gemini`.
 - [ ] Discord-native dashboard (status embeds, config commands, health checks in a dedicated channel)
-- [ ] Shareable PRD packs — markdown files describing a bot persona/config that can be generated, traded, and dropped into a workspace to bootstrap a new instance
+- [x] Shareable PRD packs — `docs/discoclaw-plan-spec.md`, `templates/plans/integration.discoclaw-plan.md`, and `skills/discoclaw-plan-{generator,consumer}/` define exchangeable `plans/*.discoclaw-plan.md` artifacts

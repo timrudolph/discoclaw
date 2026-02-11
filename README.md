@@ -59,6 +59,19 @@ Per-channel context lives in `content/discord/channels/` — one markdown file p
 
 On first run, these files are scaffolded from templates so you have a guided starting point. They're gitignored — yours, not the project's.
 
+### Shareable integration plans
+
+Discoclaw supports a shareable markdown plan format for passing integrations between users:
+
+- Spec: `docs/discoclaw-plan-spec.md`
+- Template: `templates/plans/integration.discoclaw-plan.md`
+- Example files: `plans/*.discoclaw-plan.md`
+- Skills:
+  - `skills/discoclaw-plan-generator/SKILL.md`
+  - `skills/discoclaw-plan-consumer/SKILL.md`
+
+Author one plan file for an integration, share it, then let another user's Discoclaw agent consume it and produce a local implementation checklist before coding.
+
 ## Prerequisites
 
 - **Node.js >=20** — check with `node --version`
