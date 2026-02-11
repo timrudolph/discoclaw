@@ -16,14 +16,17 @@ export type BeadSyncWatcherHandle = {
   stop(): void;
 };
 
-const LAST_TOUCHED = 'last-touched';
+const WATCH_FILES = new Set(['last-touched', 'issues.jsonl']);
 const DEFAULT_DEBOUNCE_MS = 2000;
 const DEFAULT_POLL_FALLBACK_MS = 30_000;
 const DIR_POLL_MS = 30_000;
 
 /**
- * Watch the .beads/ directory for changes to last-touched. Triggers
- * coordinator.sync() (without statusPoster) on changes.
+ * Watch the .beads/ directory for changes to last-touched or issues.jsonl.
+ * Triggers coordinator.sync() (without statusPoster) on changes.
+ *
+ * Watches both files because the bd daemon writes mutations to issues.jsonl
+ * but does not always update last-touched.
  *
  * Uses fs.watch on the directory for primary detection with a stat-based
  * polling fallback for platforms where fs.watch is unreliable.
@@ -34,7 +37,7 @@ export function startBeadSyncWatcher(opts: BeadSyncWatcherOptions): BeadSyncWatc
   const debounceMs = opts.debounceMs ?? DEFAULT_DEBOUNCE_MS;
   const pollFallbackMs = opts.pollFallbackMs ?? DEFAULT_POLL_FALLBACK_MS;
   const beadsDir = path.join(beadsCwd, '.beads');
-  const lastTouchedPath = path.join(beadsDir, LAST_TOUCHED);
+  const watchPaths = [...WATCH_FILES].map((f) => path.join(beadsDir, f));
 
   let stopped = false;
   let watcher: fs.FSWatcher | null = null;
@@ -65,7 +68,7 @@ export function startBeadSyncWatcher(opts: BeadSyncWatcherOptions): BeadSyncWatc
     // Primary: fs.watch on the directory
     try {
       watcher = fs.watch(beadsDir, (_eventType, filename) => {
-        if (filename === LAST_TOUCHED) {
+        if (filename && WATCH_FILES.has(filename)) {
           scheduleDebouncedSync();
         }
       });
@@ -77,23 +80,31 @@ export function startBeadSyncWatcher(opts: BeadSyncWatcherOptions): BeadSyncWatc
     }
 
     // Seed initial mtime before starting poll to avoid spurious first-poll trigger.
-    fsp.stat(lastTouchedPath).then((stat) => {
-      lastMtimeMs = stat.mtimeMs;
-    }).catch(() => {}).finally(() => {
-      mtimeSeeded = true;
-    });
+    Promise.all(watchPaths.map((p) => fsp.stat(p).catch(() => null)))
+      .then((stats) => {
+        for (const s of stats) {
+          if (s && s.mtimeMs > lastMtimeMs) lastMtimeMs = s.mtimeMs;
+        }
+      })
+      .catch(() => {})
+      .finally(() => { mtimeSeeded = true; });
 
-    // Polling fallback: check stat.mtimeMs on last-touched
+    // Polling fallback: check stat.mtimeMs on watched files
     pollTimer = setInterval(async () => {
       if (stopped || !mtimeSeeded) return;
       try {
-        const stat = await fsp.stat(lastTouchedPath);
-        if (stat.mtimeMs > lastMtimeMs) {
-          lastMtimeMs = stat.mtimeMs;
+        const stats = await Promise.all(
+          watchPaths.map((p) => fsp.stat(p).catch(() => null)),
+        );
+        const maxMtime = Math.max(
+          ...stats.map((s) => s?.mtimeMs ?? 0),
+        );
+        if (maxMtime > lastMtimeMs) {
+          lastMtimeMs = maxMtime;
           scheduleDebouncedSync();
         }
       } catch {
-        // File doesn't exist yet or stat failed — ignore.
+        // stat failed — ignore.
       }
     }, pollFallbackMs);
   }
