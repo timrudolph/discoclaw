@@ -9,6 +9,7 @@ export type ParsedCronDef = {
 
 export type CronJob = {
   id: string;         // unique job ID (thread ID)
+  cronId: string;     // stable ID (e.g., "cron-a1b2c3d4"), independent of thread ID
   threadId: string;   // Discord forum thread ID
   guildId: string;    // guild that owns this cron
   name: string;       // thread name (human-readable job name)

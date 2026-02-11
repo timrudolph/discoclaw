@@ -14,11 +14,11 @@ export class CronScheduler {
     this.log = log;
   }
 
-  register(id: string, threadId: string, guildId: string, name: string, def: ParsedCronDef): CronJob {
+  register(id: string, threadId: string, guildId: string, name: string, def: ParsedCronDef, cronId?: string): CronJob {
     const existing = this.jobs.get(id);
 
     // Create the cron instance first so invalid schedules don't clobber an existing job.
-    const job: CronJob = { id, threadId, guildId, name, def, cron: null, running: false };
+    const job: CronJob = { id, cronId: cronId ?? existing?.cronId ?? '', threadId, guildId, name, def, cron: null, running: false };
     const cron = new Cron(def.schedule, { timezone: def.timezone }, () => {
       // Fire-and-forget: errors handled inside the handler.
       void this.handler(job);

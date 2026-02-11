@@ -18,6 +18,7 @@ function makeDef(overrides?: Partial<ParsedCronDef>): ParsedCronDef {
 function makeJob(overrides?: Partial<CronJob>): CronJob {
   return {
     id: 'thread-1',
+    cronId: 'cron-test0001',
     threadId: 'thread-1',
     guildId: 'guild-1',
     name: 'Test Job',
