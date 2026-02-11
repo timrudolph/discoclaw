@@ -18,28 +18,31 @@ describe('renderHealthReport', () => {
     metrics.recordInvokeStart('message');
     metrics.recordInvokeResult('message', 120, false, 'timed out');
 
+    const baseConfig = {
+      runtimeModel: 'opus',
+      runtimeTimeoutMs: 60000,
+      runtimeTools: ['Read', 'Edit'],
+      useRuntimeSessions: true,
+      toolAwareStreaming: true,
+      maxConcurrentInvocations: 3,
+      discordActionsEnabled: true,
+      summaryEnabled: true,
+      durableMemoryEnabled: true,
+      messageHistoryBudget: 3000,
+      reactionHandlerEnabled: false,
+      reactionRemoveHandlerEnabled: false,
+      cronEnabled: true,
+      beadsEnabled: false,
+      beadsActive: false,
+      requireChannelContext: true,
+      autoIndexChannelContext: true,
+    } as const;
+
     const base = {
       metrics,
       queueDepth: 2,
-      config: {
-        runtimeModel: 'opus',
-        runtimeTimeoutMs: 60000,
-        runtimeTools: ['Read', 'Edit'],
-        useRuntimeSessions: true,
-        toolAwareStreaming: true,
-        maxConcurrentInvocations: 3,
-        discordActionsEnabled: true,
-        summaryEnabled: true,
-        durableMemoryEnabled: true,
-        messageHistoryBudget: 3000,
-        reactionHandlerEnabled: false,
-        reactionRemoveHandlerEnabled: false,
-        cronEnabled: true,
-        beadsEnabled: false,
-        requireChannelContext: true,
-        autoIndexChannelContext: true,
-      },
-    } as const;
+      config: baseConfig,
+    };
 
     const basic = renderHealthReport({ ...base, mode: 'basic' });
     expect(basic).toContain('Discoclaw Health');
@@ -50,6 +53,60 @@ describe('renderHealthReport', () => {
     expect(verbose).toContain('Config (safe)');
     expect(verbose).toContain('runtimeModel=opus');
     expect(verbose).toContain('Error classes:');
+  });
+
+  it('shows beads=active when beadsActive is true', () => {
+    const metrics = new MetricsRegistry();
+    const verbose = renderHealthReport({
+      metrics,
+      queueDepth: 0,
+      config: {
+        runtimeModel: 'opus', runtimeTimeoutMs: 60000, runtimeTools: ['Read'],
+        useRuntimeSessions: true, toolAwareStreaming: false, maxConcurrentInvocations: 0,
+        discordActionsEnabled: false, summaryEnabled: true, durableMemoryEnabled: true,
+        messageHistoryBudget: 3000, reactionHandlerEnabled: false, reactionRemoveHandlerEnabled: false,
+        cronEnabled: true, beadsEnabled: true, beadsActive: true,
+        requireChannelContext: true, autoIndexChannelContext: true,
+      },
+      mode: 'verbose',
+    });
+    expect(verbose).toContain('beads=active');
+  });
+
+  it('shows beads=degraded when enabled but not active', () => {
+    const metrics = new MetricsRegistry();
+    const verbose = renderHealthReport({
+      metrics,
+      queueDepth: 0,
+      config: {
+        runtimeModel: 'opus', runtimeTimeoutMs: 60000, runtimeTools: ['Read'],
+        useRuntimeSessions: true, toolAwareStreaming: false, maxConcurrentInvocations: 0,
+        discordActionsEnabled: false, summaryEnabled: true, durableMemoryEnabled: true,
+        messageHistoryBudget: 3000, reactionHandlerEnabled: false, reactionRemoveHandlerEnabled: false,
+        cronEnabled: true, beadsEnabled: true, beadsActive: false,
+        requireChannelContext: true, autoIndexChannelContext: true,
+      },
+      mode: 'verbose',
+    });
+    expect(verbose).toContain('beads=degraded');
+  });
+
+  it('shows beads=off when explicitly disabled', () => {
+    const metrics = new MetricsRegistry();
+    const verbose = renderHealthReport({
+      metrics,
+      queueDepth: 0,
+      config: {
+        runtimeModel: 'opus', runtimeTimeoutMs: 60000, runtimeTools: ['Read'],
+        useRuntimeSessions: true, toolAwareStreaming: false, maxConcurrentInvocations: 0,
+        discordActionsEnabled: false, summaryEnabled: true, durableMemoryEnabled: true,
+        messageHistoryBudget: 3000, reactionHandlerEnabled: false, reactionRemoveHandlerEnabled: false,
+        cronEnabled: true, beadsEnabled: false, beadsActive: false,
+        requireChannelContext: true, autoIndexChannelContext: true,
+      },
+      mode: 'verbose',
+    });
+    expect(verbose).toContain('beads=off');
   });
 
   it('renders tools report', () => {

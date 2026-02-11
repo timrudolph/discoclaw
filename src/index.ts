@@ -344,6 +344,7 @@ const botParams = {
     reactionRemoveHandlerEnabled,
     cronEnabled,
     beadsEnabled,
+    beadsActive: false,
     requireChannelContext,
     autoIndexChannelContext,
   },
@@ -382,6 +383,7 @@ if (beadCtx) {
   }
   botParams.beadCtx = beadCtx;
   botParams.discordActionsBeads = discordActionsBeads && beadsEnabled;
+  botParams.healthConfigSnapshot.beadsActive = true;
 
   // Wire coordinator + watcher + startup sync
   const resolvedGuildId = guildId || system?.guildId || '';

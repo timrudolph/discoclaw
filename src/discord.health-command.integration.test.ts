@@ -83,6 +83,7 @@ function baseParams(metrics: MetricsRegistry, overrides: Partial<any> = {}) {
       reactionRemoveHandlerEnabled: false,
       cronEnabled: false,
       beadsEnabled: false,
+      beadsActive: false,
       requireChannelContext: false,
       autoIndexChannelContext: false,
     },

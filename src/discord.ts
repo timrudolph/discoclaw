@@ -240,6 +240,7 @@ export function createMessageCreateHandler(params: Omit<BotParams, 'token'>, que
           reactionRemoveHandlerEnabled: params.reactionRemoveHandlerEnabled,
           cronEnabled: Boolean(params.cronCtx),
           beadsEnabled: Boolean(params.beadCtx),
+          beadsActive: Boolean(params.beadCtx),
           requireChannelContext: params.requireChannelContext,
           autoIndexChannelContext: params.autoIndexChannelContext,
         };
