@@ -4,7 +4,7 @@ A Discord-based personal assistant and workspace powered by AI.
 
 Discoclaw turns a private Discord server into a customizable AI workspace. Talk to your assistant in channels and DMs, give it per-channel context, schedule recurring tasks, track work with a built-in issue tracker, and let it take actions in your server — all through natural conversation.
 
-Built on [nanoclaw](https://github.com/qwibitai/nanoclaw)'s philosophy: keep the codebase small enough to read, make behavior explicit, and treat customization as code changes rather than a plugin system.
+The codebase is intentionally small — small enough to read, audit, and modify directly. Customization means changing the code, not configuring a plugin system.
 
 ## What it does
 
