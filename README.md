@@ -139,4 +139,4 @@ pnpm test       # run tests
 
 ## License
 
-MIT
+[MIT](LICENSE). See [DISCLAIMER.md](DISCLAIMER.md) for important usage terms.
