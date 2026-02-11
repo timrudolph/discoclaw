@@ -541,10 +541,14 @@ export function cronActionsPromptSection(): string {
 <discord-action>{"type":"cronResume","cronId":"cron-a1b2c3d4"}</discord-action>
 \`\`\`
 
-**cronDelete** — Delete a cron and archive its thread:
+**cronDelete** — Remove a cron job and archive its thread:
 \`\`\`
 <discord-action>{"type":"cronDelete","cronId":"cron-a1b2c3d4"}</discord-action>
 \`\`\`
+Note: cronDelete **archives** the thread (reversible) — it does not permanently
+delete it. The thread history is preserved and the thread can be unarchived later
+via the Discord UI, which will re-register the cron job automatically. Permanent
+thread deletion can only be done manually through Discord.
 
 **cronTrigger** — Immediately execute a cron (manual fire):
 \`\`\`

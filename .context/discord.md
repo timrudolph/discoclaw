@@ -107,6 +107,8 @@ Managing crons:
 - **Edit:** Edit the starter message. The bot re-parses on the next `messageUpdate`.
 - **Delete:** Delete the thread. The bot removes the job.
 
+Archive vs delete: archiving a thread is reversible (sets the archived flag; thread still exists and can be unarchived). Deleting a thread is permanent (thread and its messages are gone). The `cronDelete` action archives the thread — it does not delete it — so history is preserved and the cron can be restored by unarchiving.
+
 Cron responses are posted to the target channel only (threads stay clean as config). Discord actions are supported in cron responses if the master switch is enabled. Failures are posted to the status channel.
 
 Overlap protection: if a previous run for the same job is still active, the next tick is skipped.
