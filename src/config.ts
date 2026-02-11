@@ -326,7 +326,7 @@ export function parseConfig(env: NodeJS.ProcessEnv): ParseResult {
       memoryCommandsEnabled: parseBoolean(env, 'DISCOCLAW_MEMORY_COMMANDS_ENABLED', true),
       actionFollowupDepth: parseNonNegativeInt(env, 'DISCOCLAW_ACTION_FOLLOWUP_DEPTH', 3),
 
-      reactionHandlerEnabled: parseBoolean(env, 'DISCOCLAW_REACTION_HANDLER', false),
+      reactionHandlerEnabled: parseBoolean(env, 'DISCOCLAW_REACTION_HANDLER', true),
       reactionMaxAgeHours: parseNonNegativeNumber(env, 'DISCOCLAW_REACTION_MAX_AGE_HOURS', 24),
 
       statusChannel: parseTrimmedString(env, 'DISCOCLAW_STATUS_CHANNEL'),
