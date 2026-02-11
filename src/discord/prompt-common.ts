@@ -76,6 +76,14 @@ export async function buildDurableMemorySection(opts: {
 
 export { buildShortTermMemorySection };
 
+// Track effective tools fingerprint per workspace to detect mid-run changes.
+const toolsFingerprintMap = new Map<string, string>();
+
+/** Reset fingerprint state (for tests only). */
+export function _resetToolsAuditState(): void {
+  toolsFingerprintMap.clear();
+}
+
 export async function resolveEffectiveTools(opts: {
   workspaceCwd: string;
   runtimeTools: string[];
@@ -83,6 +91,18 @@ export async function resolveEffectiveTools(opts: {
 }): Promise<{ effectiveTools: string[]; permissionTier: string; permissionNote?: string }> {
   const permissions = await loadWorkspacePermissions(opts.workspaceCwd, opts.log);
   const effectiveTools = resolveTools(permissions, opts.runtimeTools);
+
+  // Audit: detect effective-tools changes between invocations.
+  const fingerprint = effectiveTools.slice().sort().join(',');
+  const prev = toolsFingerprintMap.get(opts.workspaceCwd);
+  if (prev !== undefined && prev !== fingerprint) {
+    opts.log?.warn(
+      { workspaceCwd: opts.workspaceCwd, previous: prev, current: fingerprint },
+      'workspace-permissions: effective tools changed between invocations',
+    );
+  }
+  toolsFingerprintMap.set(opts.workspaceCwd, fingerprint);
+
   return {
     effectiveTools,
     permissionTier: permissions?.tier ?? 'env',

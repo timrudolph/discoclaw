@@ -4,7 +4,7 @@ import os from 'node:os';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BeadData } from '../beads/types.js';
 
-import { loadWorkspaceMemoryFile, loadDailyLogFiles, buildBeadContextSection, buildBeadThreadSection } from './prompt-common.js';
+import { loadWorkspaceMemoryFile, loadDailyLogFiles, buildBeadContextSection, buildBeadThreadSection, resolveEffectiveTools, _resetToolsAuditState } from './prompt-common.js';
 
 describe('loadWorkspaceMemoryFile', () => {
   const dirs: string[] = [];
@@ -257,5 +257,80 @@ describe('buildBeadThreadSection', () => {
     });
     expect(result).toBe('');
     expect(log.warn).toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveEffectiveTools — fingerprint audit logging
+// ---------------------------------------------------------------------------
+
+describe('resolveEffectiveTools audit logging', () => {
+  const dirs: string[] = [];
+
+  beforeEach(() => {
+    _resetToolsAuditState();
+  });
+
+  afterEach(async () => {
+    for (const d of dirs) await fs.rm(d, { recursive: true, force: true });
+    dirs.length = 0;
+  });
+
+  async function tmpDir() {
+    const d = await fs.mkdtemp(path.join(os.tmpdir(), 'tools-audit-'));
+    dirs.push(d);
+    return d;
+  }
+
+  it('stores fingerprint without warning on first call', async () => {
+    const workspace = await tmpDir();
+    await fs.writeFile(path.join(workspace, 'PERMISSIONS.json'), '{"tier":"readonly"}');
+    const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+
+    await resolveEffectiveTools({ workspaceCwd: workspace, runtimeTools: ['Bash', 'Read'], log });
+
+    expect(log.warn).not.toHaveBeenCalled();
+  });
+
+  it('produces no warning when tools are unchanged', async () => {
+    const workspace = await tmpDir();
+    await fs.writeFile(path.join(workspace, 'PERMISSIONS.json'), '{"tier":"readonly"}');
+    const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+
+    await resolveEffectiveTools({ workspaceCwd: workspace, runtimeTools: ['Bash', 'Read'], log });
+    await resolveEffectiveTools({ workspaceCwd: workspace, runtimeTools: ['Bash', 'Read'], log });
+
+    expect(log.warn).not.toHaveBeenCalled();
+  });
+
+  it('warns when effective tools change between invocations', async () => {
+    const workspace = await tmpDir();
+    await fs.writeFile(path.join(workspace, 'PERMISSIONS.json'), '{"tier":"readonly"}');
+    const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+
+    await resolveEffectiveTools({ workspaceCwd: workspace, runtimeTools: ['Bash', 'Read'], log });
+
+    // Simulate tier change by rewriting PERMISSIONS.json.
+    await fs.writeFile(path.join(workspace, 'PERMISSIONS.json'), '{"tier":"full"}');
+    await resolveEffectiveTools({ workspaceCwd: workspace, runtimeTools: ['Bash', 'Read'], log });
+
+    expect(log.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ workspaceCwd: workspace }),
+      expect.stringContaining('effective tools changed'),
+    );
+  });
+
+  it('tracks different workspaceCwd values independently', async () => {
+    const ws1 = await tmpDir();
+    const ws2 = await tmpDir();
+    await fs.writeFile(path.join(ws1, 'PERMISSIONS.json'), '{"tier":"readonly"}');
+    await fs.writeFile(path.join(ws2, 'PERMISSIONS.json'), '{"tier":"full"}');
+    const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+
+    await resolveEffectiveTools({ workspaceCwd: ws1, runtimeTools: ['Bash', 'Read'], log });
+    await resolveEffectiveTools({ workspaceCwd: ws2, runtimeTools: ['Bash', 'Read'], log });
+
+    // Neither should warn — they're different workspaces.
+    expect(log.warn).not.toHaveBeenCalled();
   });
 });
