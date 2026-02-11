@@ -1,6 +1,10 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { ChannelType } from 'discord.js';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import os from 'node:os';
 import { executeCronJob } from './executor.js';
+import { safeCronId } from './job-lock.js';
 import type { CronJob, ParsedCronDef } from './types.js';
 import type { CronExecutorContext } from './executor.js';
 import type { EngineEvent, RuntimeAdapter } from '../runtime/types.js';
@@ -245,5 +249,72 @@ describe('executeCronJob', () => {
     await executeCronJob(job, ctx);
 
     expect(job.running).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// File-lock integration
+// ---------------------------------------------------------------------------
+
+describe('executeCronJob file lock integration', () => {
+  let lockDir: string;
+
+  beforeEach(async () => {
+    lockDir = await fs.mkdtemp(path.join(os.tmpdir(), 'executor-lock-test-'));
+  });
+
+  afterEach(async () => {
+    await fs.rm(lockDir, { recursive: true, force: true });
+  });
+
+  it('acquires and releases lock when lockDir is set', async () => {
+    const ctx = makeCtx({ lockDir });
+    const job = makeJob();
+    const lockPath = path.join(lockDir, safeCronId(job.cronId) + '.lock');
+
+    await executeCronJob(job, ctx);
+
+    // Lock should be released after execution.
+    await expect(fs.stat(lockPath)).rejects.toThrow();
+    expect(job.running).toBe(false);
+  });
+
+  it('releases lock even on early return (guild not found)', async () => {
+    const client = {
+      guilds: { cache: { get: vi.fn().mockReturnValue(undefined) } },
+    };
+    const ctx = makeCtx({ client: client as any, lockDir });
+    const job = makeJob();
+    const lockPath = path.join(lockDir, safeCronId(job.cronId) + '.lock');
+
+    await executeCronJob(job, ctx);
+
+    await expect(fs.stat(lockPath)).rejects.toThrow();
+    expect(job.running).toBe(false);
+  });
+
+  it('skips execution when lock is already held by another process', async () => {
+    const ctx = makeCtx({ lockDir });
+    const job = makeJob();
+
+    // Pre-create a lock with a fake alive PID (our own PID, so it's alive).
+    const lockPath = path.join(lockDir, safeCronId(job.cronId) + '.lock');
+    await fs.mkdir(lockPath);
+    await fs.writeFile(
+      path.join(lockPath, 'meta.json'),
+      JSON.stringify({ pid: process.pid, token: 'other-token', acquiredAt: new Date().toISOString() }),
+    );
+
+    await executeCronJob(job, ctx);
+
+    // Should have been skipped — no channel send.
+    const guild = (ctx.client as any).guilds.cache.get('guild-1');
+    const channel = guild.channels.cache.get('general');
+    expect(channel.send).not.toHaveBeenCalled();
+    expect(ctx.log?.warn).toHaveBeenCalled();
+
+    // Lock should still exist (we didn't acquire it, so we shouldn't touch it).
+    const stat = await fs.stat(lockPath);
+    expect(stat.isDirectory()).toBe(true);
   });
 });

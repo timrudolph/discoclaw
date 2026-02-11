@@ -1,4 +1,6 @@
 import type { Client } from 'discord.js';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import type { DiscordActionResult, ActionContext } from './actions.js';
 import type { LoggerLike } from './action-types.js';
 import type { RuntimeAdapter } from '../runtime/types.js';
@@ -6,6 +8,7 @@ import type { CronRunStats } from '../cron/run-stats.js';
 import type { CronScheduler } from '../cron/scheduler.js';
 import type { CronExecutorContext } from '../cron/executor.js';
 import { generateCronId } from '../cron/run-stats.js';
+import { safeCronId } from '../cron/job-lock.js';
 import { detectCadence } from '../cron/cadence.js';
 import { autoTagCron, classifyCronModel } from '../cron/auto-tag.js';
 import { buildCronThreadName, ensureStatusMessage, resolveForumChannel } from '../cron/discord-sync.js';
@@ -23,7 +26,7 @@ export type CronActionRequest =
   | { type: 'cronPause'; cronId: string }
   | { type: 'cronResume'; cronId: string }
   | { type: 'cronDelete'; cronId: string }
-  | { type: 'cronTrigger'; cronId: string }
+  | { type: 'cronTrigger'; cronId: string; force?: boolean }
   | { type: 'cronSync' };
 
 const CRON_TYPE_MAP: Record<CronActionRequest['type'], true> = {
@@ -412,6 +415,22 @@ export async function executeCronAction(
         return { ok: false, error: `Cron "${action.cronId}" not found in scheduler` };
       }
 
+      // Force: delete any existing file lock and clear in-memory guard before executing.
+      if (action.force) {
+        const lockDir = cronCtx.executorCtx?.lockDir;
+        if (!lockDir) {
+          return { ok: false, error: 'force requires configured lockDir' };
+        }
+        const lockPath = path.join(lockDir, safeCronId(action.cronId) + '.lock');
+        try {
+          await fs.rm(lockPath, { recursive: true, force: true });
+          cronCtx.log?.info({ cronId: action.cronId }, 'cron:trigger force-deleted lock');
+        } catch (err) {
+          cronCtx.log?.warn({ err, cronId: action.cronId }, 'cron:trigger force lock delete failed');
+        }
+        job.running = false;
+      }
+
       // Fire the executor (deferred import to avoid circular).
       try {
         const { executeCronJob } = await import('../cron/executor.js');
@@ -515,6 +534,10 @@ export function cronActionsPromptSection(): string {
 **cronTrigger** — Immediately execute a cron (manual fire):
 \`\`\`
 <discord-action>{"type":"cronTrigger","cronId":"cron-a1b2c3d4"}</discord-action>
+\`\`\`
+Force override (breaks lock even if another run is active — risk of overlap):
+\`\`\`
+<discord-action>{"type":"cronTrigger","cronId":"cron-a1b2c3d4","force":true}</discord-action>
 \`\`\`
 
 **cronSync** — Run full bidirectional sync:

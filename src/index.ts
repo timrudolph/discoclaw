@@ -121,6 +121,9 @@ const durableInjectMaxChars = Math.max(1, Number(process.env.DISCOCLAW_DURABLE_I
 const durableMaxItems = Math.max(1, Number(process.env.DISCOCLAW_DURABLE_MAX_ITEMS ?? '200'));
 const memoryCommandsEnabled = (process.env.DISCOCLAW_MEMORY_COMMANDS_ENABLED ?? '1') === '1';
 const actionFollowupDepth = Math.max(0, Number(process.env.DISCOCLAW_ACTION_FOLLOWUP_DEPTH ?? '3'));
+const reactionHandlerEnabled = (process.env.DISCOCLAW_REACTION_HANDLER ?? '0') === '1';
+const reactionMaxAgeHours = Math.max(0, Number(process.env.DISCOCLAW_REACTION_MAX_AGE_HOURS ?? '24'));
+const reactionMaxAgeMs = reactionMaxAgeHours * 60 * 60 * 1000;
 const statusChannel = (process.env.DISCOCLAW_STATUS_CHANNEL ?? '').trim() || undefined;
 const guildId = (process.env.DISCORD_GUILD_ID ?? '').trim() || undefined;
 const cronEnabled = (process.env.DISCOCLAW_CRON_ENABLED ?? '0') === '1';
@@ -283,6 +286,8 @@ const botParams = {
   bootstrapEnsureBeadsForum: beadsEnabled && bdAvailable,
   toolAwareStreaming,
   actionFollowupDepth,
+  reactionHandlerEnabled,
+  reactionMaxAgeMs,
 };
 
 const { client, status, system } = await startDiscordBot(botParams);
@@ -331,6 +336,9 @@ if (cronEnabled && effectiveCronForum) {
   await seedTagMap(cronTagMapSeedPath, cronTagMapPath);
 
   // Load persistent stats.
+  const cronLocksDir = path.join(cronStatsDir, 'locks');
+  await fs.mkdir(cronLocksDir, { recursive: true });
+
   const cronStatsPath = path.join(cronStatsDir, 'cron-run-stats.json');
   const cronStats = await loadRunStats(cronStatsPath);
 
@@ -373,6 +381,7 @@ if (cronEnabled && effectiveCronForum) {
     beadCtx,
     cronCtx,
     statsStore: cronStats,
+    lockDir: cronLocksDir,
   };
 
   cronScheduler = new CronScheduler((job) => executeCronJob(job, cronExecCtx), log);

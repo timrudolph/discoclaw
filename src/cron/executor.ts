@@ -7,6 +7,7 @@ import type { ActionCategoryFlags } from '../discord/actions.js';
 import type { BeadContext } from '../discord/actions-beads.js';
 import type { CronContext } from '../discord/actions-crons.js';
 import type { CronRunStats } from './run-stats.js';
+import { acquireCronLock, releaseCronLock } from './job-lock.js';
 import { resolveChannel } from '../discord/action-utils.js';
 import { parseDiscordActions, executeDiscordActions } from '../discord/actions.js';
 import { splitDiscord, truncateCodeBlocks } from '../discord.js';
@@ -30,6 +31,7 @@ export type CronExecutorContext = {
   beadCtx?: BeadContext;
   cronCtx?: CronContext;
   statsStore?: CronRunStats;
+  lockDir?: string;
 };
 
 async function recordError(ctx: CronExecutorContext, job: CronJob, msg: string): Promise<void> {
@@ -43,11 +45,23 @@ async function recordError(ctx: CronExecutorContext, job: CronJob, msg: string):
 }
 
 export async function executeCronJob(job: CronJob, ctx: CronExecutorContext): Promise<void> {
-  // Overlap guard: skip if previous run is still going.
+  // Overlap guard: skip if previous run is still going (in-memory, no lock touched).
   if (job.running) {
     ctx.log?.warn({ jobId: job.id, name: job.name }, 'cron:skip (previous run still active)');
     return;
   }
+
+  // File-based lock: prevents duplicate execution across processes.
+  let lockToken: string | undefined;
+  if (ctx.lockDir && job.cronId) {
+    try {
+      lockToken = await acquireCronLock(ctx.lockDir, job.cronId);
+    } catch (err) {
+      ctx.log?.warn({ jobId: job.id, cronId: job.cronId, err }, 'cron:skip (lock acquire failed)');
+      return;
+    }
+  }
+
   job.running = true;
 
   try {
@@ -199,6 +213,11 @@ export async function executeCronJob(job: CronJob, ctx: CronExecutorContext): Pr
 
     await recordError(ctx, job, msg);
   } finally {
+    if (lockToken && ctx.lockDir && job.cronId) {
+      await releaseCronLock(ctx.lockDir, job.cronId, lockToken).catch((err) => {
+        ctx.log?.warn({ err, jobId: job.id, cronId: job.cronId }, 'cron:exec lock release failed');
+      });
+    }
     job.running = false;
 
     // Update bot-owned status message.
