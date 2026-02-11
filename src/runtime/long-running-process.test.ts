@@ -343,6 +343,40 @@ describe('LongRunningProcess', () => {
     expect(parsed.message.content[1].source.data).toBe('iVBORw0KGgo=');
   });
 
+  it('spawns with --fallback-model, --max-budget-usd, --append-system-prompt when set', () => {
+    const mock = createMockSubprocess();
+    (execa as any).mockReturnValue(mock.proc);
+
+    const proc = new LongRunningProcess({
+      ...baseOpts,
+      fallbackModel: 'sonnet',
+      maxBudgetUsd: 7.5,
+      appendSystemPrompt: 'You are Weston.',
+    });
+    proc.spawn();
+
+    const callArgs = (execa as any).mock.calls[0]?.[1] ?? [];
+    expect(callArgs).toContain('--fallback-model');
+    expect(callArgs[callArgs.indexOf('--fallback-model') + 1]).toBe('sonnet');
+    expect(callArgs).toContain('--max-budget-usd');
+    expect(callArgs[callArgs.indexOf('--max-budget-usd') + 1]).toBe('7.5');
+    expect(callArgs).toContain('--append-system-prompt');
+    expect(callArgs[callArgs.indexOf('--append-system-prompt') + 1]).toBe('You are Weston.');
+  });
+
+  it('omits new flags when not set', () => {
+    const mock = createMockSubprocess();
+    (execa as any).mockReturnValue(mock.proc);
+
+    const proc = new LongRunningProcess(baseOpts);
+    proc.spawn();
+
+    const callArgs = (execa as any).mock.calls[0]?.[1] ?? [];
+    expect(callArgs).not.toContain('--fallback-model');
+    expect(callArgs).not.toContain('--max-budget-usd');
+    expect(callArgs).not.toContain('--append-system-prompt');
+  });
+
   it('sendTurn without images writes plain string content (no regression)', async () => {
     const mock = createMockSubprocess();
     (execa as any).mockReturnValue(mock.proc);

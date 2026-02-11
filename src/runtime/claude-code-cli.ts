@@ -150,6 +150,12 @@ export type ClaudeCliRuntimeOpts = {
   debugFile?: string | null;
   // If true, pass `--strict-mcp-config` to skip slow MCP plugin init in headless contexts.
   strictMcpConfig?: boolean;
+  // Auto-fallback model when primary is overloaded.
+  fallbackModel?: string;
+  // Max USD spend per CLI process.
+  maxBudgetUsd?: number;
+  // Append to Claude's system prompt.
+  appendSystemPrompt?: string;
   // Optional logger for pre-invocation debug output.
   log?: { debug(...args: unknown[]): void; info?(...args: unknown[]): void };
   // If true, scan Claude Code's JSONL session file to emit tool_start/tool_end events.
@@ -196,6 +202,9 @@ export function createClaudeCliRuntime(opts: ClaudeCliRuntimeOpts): RuntimeAdapt
           cwd: params.cwd,
           dangerouslySkipPermissions: opts.dangerouslySkipPermissions,
           strictMcpConfig: opts.strictMcpConfig,
+          fallbackModel: opts.fallbackModel,
+          maxBudgetUsd: opts.maxBudgetUsd,
+          appendSystemPrompt: opts.appendSystemPrompt,
           tools: params.tools,
           addDirs: params.addDirs,
           hangTimeoutMs: opts.multiTurnHangTimeoutMs,
@@ -239,6 +248,18 @@ export function createClaudeCliRuntime(opts: ClaudeCliRuntimeOpts): RuntimeAdapt
 
     if (opts.strictMcpConfig) {
       args.push('--strict-mcp-config');
+    }
+
+    if (opts.fallbackModel) {
+      args.push('--fallback-model', opts.fallbackModel);
+    }
+
+    if (opts.maxBudgetUsd != null) {
+      args.push('--max-budget-usd', String(opts.maxBudgetUsd));
+    }
+
+    if (opts.appendSystemPrompt) {
+      args.push('--append-system-prompt', opts.appendSystemPrompt);
     }
 
     if (opts.debugFile && opts.debugFile.trim()) {

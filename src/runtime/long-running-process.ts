@@ -19,6 +19,9 @@ export type LongRunningProcessOpts = {
   cwd: string;
   dangerouslySkipPermissions?: boolean;
   strictMcpConfig?: boolean;
+  fallbackModel?: string;
+  maxBudgetUsd?: number;
+  appendSystemPrompt?: string;
   tools?: string[];
   addDirs?: string[];
   hangTimeoutMs?: number;
@@ -94,6 +97,15 @@ export class LongRunningProcess {
     }
     if (this.opts.strictMcpConfig) {
       args.push('--strict-mcp-config');
+    }
+    if (this.opts.fallbackModel) {
+      args.push('--fallback-model', this.opts.fallbackModel);
+    }
+    if (this.opts.maxBudgetUsd != null) {
+      args.push('--max-budget-usd', String(this.opts.maxBudgetUsd));
+    }
+    if (this.opts.appendSystemPrompt) {
+      args.push('--append-system-prompt', this.opts.appendSystemPrompt);
     }
     if (this.opts.tools) {
       if (this.opts.tools.length > 0) {
