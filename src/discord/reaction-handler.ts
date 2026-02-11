@@ -419,7 +419,15 @@ function createReactionHandler(
             }
           }
 
-          await editThenSendChunks(reply!, (msg as any).channel, processedText, collectedImages);
+          try {
+            await editThenSendChunks(reply!, (msg as any).channel, processedText, collectedImages);
+          } catch (editErr: any) {
+            if (editErr?.code === 50083) {
+              params.log?.info({ sessionKey }, `${logPrefix}:reply skipped (thread archived by action)`);
+            } else {
+              throw editErr;
+            }
+          }
         } catch (err) {
           metrics.increment(handlerErrorMetric);
           params.log?.error({ err, sessionKey }, `${logPrefix}:handler failed`);

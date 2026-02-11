@@ -685,7 +685,19 @@ export function createMessageCreateHandler(params: Omit<BotParams, 'token'>, que
               }
             }
 
-            await editThenSendChunks(reply, msg.channel, processedText, collectedImages);
+            try {
+              await editThenSendChunks(reply, msg.channel, processedText, collectedImages);
+            } catch (editErr: any) {
+              // Thread archived by a beadClose action — the close summary was already
+              // posted inside closeBeadThread, so the only thing lost is Claude's
+              // conversational wrapper ("Done. Closing it out now.").  Swallow gracefully.
+              if (editErr?.code === 50083) {
+                params.log?.info({ sessionKey }, 'discord:reply skipped (thread archived by action)');
+                try { await reply.delete(); } catch { /* best-effort cleanup */ }
+              } else {
+                throw editErr;
+              }
+            }
 
             // -- auto-follow-up check --
             if (followUpDepth >= params.actionFollowupDepth) break;
