@@ -67,17 +67,36 @@ describe('editThenSendChunks with images', () => {
     expect(reply.edit.mock.calls[0][0].files).toHaveLength(1);
   });
 
-  it('attaches images to single text chunk', async () => {
+  it('attaches images to single text chunk in one edit', async () => {
     const reply = mockReply();
     const channel = mockChannel();
     const images: ImageData[] = [
       { base64: Buffer.from('test').toString('base64'), mediaType: 'image/png' },
     ];
     await editThenSendChunks(reply, channel, 'Response text', images);
-    expect(reply.edit).toHaveBeenCalled();
-    // Single chunk: images in the edit call
-    const editCall = reply.edit.mock.calls[reply.edit.mock.calls.length - 1][0];
-    expect(editCall.files).toHaveLength(1);
+    // Should only call edit once (no double-edit)
+    expect(reply.edit).toHaveBeenCalledOnce();
+    expect(reply.edit.mock.calls[0][0].content).toBe('Response text');
+    expect(reply.edit.mock.calls[0][0].files).toHaveLength(1);
+  });
+
+  it('attaches images to last chunk in multi-chunk text', async () => {
+    const reply = mockReply();
+    const channel = mockChannel();
+    const images: ImageData[] = [
+      { base64: Buffer.from('img').toString('base64'), mediaType: 'image/png' },
+    ];
+    // Generate text long enough to split into multiple chunks (>2000 chars)
+    const longText = 'A'.repeat(2100);
+    await editThenSendChunks(reply, channel, longText, images);
+    // First chunk via edit (no files), remaining via channel.send
+    expect(reply.edit).toHaveBeenCalledOnce();
+    expect(reply.edit.mock.calls[0][0].files).toBeUndefined();
+    // Last send should have files
+    const sendCalls = channel.send.mock.calls;
+    expect(sendCalls.length).toBeGreaterThanOrEqual(1);
+    const lastSend = sendCalls[sendCalls.length - 1][0];
+    expect(lastSend.files).toHaveLength(1);
   });
 
   it('shows (no output) when empty text and no images', async () => {

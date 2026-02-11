@@ -421,7 +421,6 @@ export function createMessageCreateHandler(params: Omit<BotParams, 'token'>, que
           let currentPrompt = prompt;
           let followUpDepth = 0;
           let processedText = '';
-          const collectedImages: ImageData[] = [];
 
           // -- auto-follow-up loop --
           // When query actions (channelList, readMessages, etc.) succeed, re-invoke
@@ -430,6 +429,7 @@ export function createMessageCreateHandler(params: Omit<BotParams, 'token'>, que
           while (true) {
             let finalText = '';
             let deltaText = '';
+            const collectedImages: ImageData[] = [];
             let activityLabel = '';
             let statusTick = 1;
             const t0 = Date.now();
@@ -557,7 +557,7 @@ export function createMessageCreateHandler(params: Omit<BotParams, 'token'>, que
             }
             clearInterval(keepalive);
 
-            processedText = finalText || deltaText || '(no output)';
+            processedText = finalText || deltaText || (collectedImages.length > 0 ? '' : '(no output)');
             let actions: { type: string }[] = [];
             let actionResults: DiscordActionResult[] = [];
             if (params.discordActionsEnabled && msg.guild) {

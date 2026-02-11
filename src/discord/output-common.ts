@@ -61,6 +61,18 @@ export async function editThenSendChunks(
 
   // Text + optional images: attach images to the last chunk.
   const lastIdx = chunks.length - 1;
+
+  if (lastIdx === 0 && attachments.length > 0) {
+    // Single chunk with images: one edit with files attached.
+    const firstBatch = attachments.slice(0, MAX_ATTACHMENTS_PER_MESSAGE);
+    await reply.edit({ content: chunks[0] ?? '(no output)', allowedMentions: NO_MENTIONS, files: firstBatch });
+    for (let j = MAX_ATTACHMENTS_PER_MESSAGE; j < attachments.length; j += MAX_ATTACHMENTS_PER_MESSAGE) {
+      await channel.send({ content: '', allowedMentions: NO_MENTIONS, files: attachments.slice(j, j + MAX_ATTACHMENTS_PER_MESSAGE) });
+    }
+    return;
+  }
+
+  // Multi-chunk: first chunk via edit, rest via send, images on last chunk.
   await reply.edit({ content: chunks[0] ?? '(no output)', allowedMentions: NO_MENTIONS });
   for (let i = 1; i < chunks.length; i++) {
     if (i === lastIdx && attachments.length > 0) {
@@ -71,14 +83,6 @@ export async function editThenSendChunks(
       }
     } else {
       await channel.send({ content: chunks[i], allowedMentions: NO_MENTIONS });
-    }
-  }
-  // If there's only one chunk and images, edit with images.
-  if (lastIdx === 0 && attachments.length > 0) {
-    const firstBatch = attachments.slice(0, MAX_ATTACHMENTS_PER_MESSAGE);
-    await reply.edit({ content: chunks[0] ?? '(no output)', allowedMentions: NO_MENTIONS, files: firstBatch });
-    for (let j = MAX_ATTACHMENTS_PER_MESSAGE; j < attachments.length; j += MAX_ATTACHMENTS_PER_MESSAGE) {
-      await channel.send({ content: '', allowedMentions: NO_MENTIONS, files: attachments.slice(j, j + MAX_ATTACHMENTS_PER_MESSAGE) });
     }
   }
 }

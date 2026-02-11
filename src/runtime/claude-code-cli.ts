@@ -55,11 +55,11 @@ export function extractResultText(evt: unknown): string | null {
   return null;
 }
 
-/** Max base64 size (25 MB) — Discord's upload limit. */
+/** Max base64 string length (~25 MB encoded, ~18.75 MB decoded). */
 const MAX_IMAGE_BASE64_LEN = 25 * 1024 * 1024;
 
 /** Max images per invocation to prevent runaway accumulation. */
-const MAX_IMAGES_PER_INVOCATION = 10;
+export const MAX_IMAGES_PER_INVOCATION = 10;
 
 /** Extract an image content block from a Claude CLI stream-json event. */
 export function extractImageFromUnknownEvent(evt: unknown): ImageData | null {
@@ -106,9 +106,9 @@ export function extractResultContentBlocks(evt: unknown): { text: string; images
   return { text, images };
 }
 
-/** Create a dedupe key for an image (mediaType + data prefix). */
+/** Create a dedupe key for an image using a prefix + length to avoid storing full base64 in memory. */
 export function imageDedupeKey(img: ImageData): string {
-  return img.mediaType + ':' + img.base64;
+  return img.mediaType + ':' + img.base64.length + ':' + img.base64.slice(0, 64);
 }
 
 /**

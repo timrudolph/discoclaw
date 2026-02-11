@@ -7,6 +7,7 @@ import {
   extractImageFromUnknownEvent,
   extractResultContentBlocks,
   imageDedupeKey,
+  MAX_IMAGES_PER_INVOCATION,
   stripToolUseBlocks,
   tryParseJsonLine,
 } from './claude-code-cli.js';
@@ -399,7 +400,7 @@ export class LongRunningProcess {
   }
 
   private pushImageIfNew(img: ImageData): void {
-    if (this.turnImageCount >= 10) return;
+    if (this.turnImageCount >= MAX_IMAGES_PER_INVOCATION) return;
     const key = imageDedupeKey(img);
     if (this.turnSeenImages.has(key)) return;
     this.turnSeenImages.add(key);

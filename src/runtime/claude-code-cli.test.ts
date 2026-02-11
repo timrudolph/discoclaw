@@ -381,13 +381,28 @@ describe('extractResultContentBlocks', () => {
 describe('imageDedupeKey', () => {
   it('creates consistent key for same image', () => {
     const img = { base64: 'abc', mediaType: 'image/png' };
-    expect(imageDedupeKey(img)).toBe('image/png:abc');
+    expect(imageDedupeKey(img)).toBe('image/png:3:abc');
     expect(imageDedupeKey(img)).toBe(imageDedupeKey({ ...img }));
   });
 
   it('different images produce different keys', () => {
     const a = { base64: 'abc', mediaType: 'image/png' };
     const b = { base64: 'xyz', mediaType: 'image/png' };
+    expect(imageDedupeKey(a)).not.toBe(imageDedupeKey(b));
+  });
+
+  it('uses prefix + length to avoid storing full base64', () => {
+    const longData = 'a'.repeat(1000);
+    const img = { base64: longData, mediaType: 'image/png' };
+    const key = imageDedupeKey(img);
+    // Key should be much shorter than the full base64 string
+    expect(key.length).toBeLessThan(200);
+    expect(key).toContain(':1000:');
+  });
+
+  it('distinguishes images with same prefix but different lengths', () => {
+    const a = { base64: 'a'.repeat(100), mediaType: 'image/png' };
+    const b = { base64: 'a'.repeat(200), mediaType: 'image/png' };
     expect(imageDedupeKey(a)).not.toBe(imageDedupeKey(b));
   });
 });

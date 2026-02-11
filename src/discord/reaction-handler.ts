@@ -275,7 +275,7 @@ export function createReactionAddHandler(
           metrics.recordInvokeResult('reaction', Date.now() - t0, true);
           params.log?.info({ flow: 'reaction', sessionKey, ms: Date.now() - t0, ok: true }, 'obs.invoke.end');
 
-          let processedText = finalText || deltaText || '(no output)';
+          let processedText = finalText || deltaText || (collectedImages.length > 0 ? '' : '(no output)');
 
           params.log?.info({ sessionKey, sessionId, ms: Date.now() - t0, hadError: Boolean(invokeError) }, 'reaction:invoke:end');
 
