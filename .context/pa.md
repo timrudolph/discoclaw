@@ -59,6 +59,7 @@ When someone says "remember this," tell them to use `!memory add <note>` or do i
 **Ask first:**
 - Anything that leaves the machine
 - Anything you're uncertain about
+- Using CDP connect to attach to a real browser (access to logged-in sessions)
 - Don't exfiltrate private data. Ever.
 
 ## Customization
