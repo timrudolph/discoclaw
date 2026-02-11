@@ -108,7 +108,7 @@ export async function executeCronJob(job: CronJob, ctx: CronExecutorContext): Pr
       }
     }
 
-    const prompt =
+    let prompt =
       `You are executing a scheduled cron job named "${job.name}".\n\n` +
       `Instruction: ${job.def.prompt}\n\n` +
       `Your output will be posted automatically to the Discord channel #${job.def.channel}. ` +
@@ -121,6 +121,9 @@ export async function executeCronJob(job: CronJob, ctx: CronExecutorContext): Pr
       log: ctx.log,
     });
     const effectiveTools = tools.effectiveTools;
+    if (tools.permissionNote) {
+      prompt += `\n\n---\nPermission note: ${tools.permissionNote}\n`;
+    }
 
     // Per-cron model selection: override > AI-classified > global default.
     let effectiveModel = ctx.model;

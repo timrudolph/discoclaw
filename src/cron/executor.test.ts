@@ -322,3 +322,69 @@ describe('executeCronJob file lock integration', () => {
     expect(stat.isDirectory()).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// permissionNote injection
+// ---------------------------------------------------------------------------
+
+describe('executeCronJob permissionNote injection', () => {
+  let wsDir: string;
+
+  beforeEach(async () => {
+    wsDir = await fs.mkdtemp(path.join(os.tmpdir(), 'executor-perm-'));
+  });
+
+  afterEach(async () => {
+    await fs.rm(wsDir, { recursive: true, force: true });
+  });
+
+  function makeCapturingRuntime(response: string) {
+    const invokeSpy = vi.fn();
+    return {
+      runtime: {
+        id: 'claude_code',
+        capabilities: new Set(['streaming_text']),
+        async *invoke(params: any): AsyncIterable<EngineEvent> {
+          invokeSpy(params);
+          yield { type: 'text_final', text: response };
+          yield { type: 'done' };
+        },
+      } as RuntimeAdapter,
+      invokeSpy,
+    };
+  }
+
+  it('injects permissionNote into the prompt when PERMISSIONS.json has a note', async () => {
+    await fs.writeFile(
+      path.join(wsDir, 'PERMISSIONS.json'),
+      JSON.stringify({ tier: 'readonly', note: 'Read-only access for scheduled tasks.' }),
+    );
+
+    const { runtime, invokeSpy } = makeCapturingRuntime('Hello!');
+    const ctx = makeCtx({ runtime, cwd: wsDir });
+    const job = makeJob();
+
+    await executeCronJob(job, ctx);
+
+    expect(invokeSpy).toHaveBeenCalledOnce();
+    const passedPrompt = invokeSpy.mock.calls[0][0].prompt;
+    expect(passedPrompt).toContain('Permission note: Read-only access for scheduled tasks.');
+  });
+
+  it('does not inject permissionNote when PERMISSIONS.json has no note', async () => {
+    await fs.writeFile(
+      path.join(wsDir, 'PERMISSIONS.json'),
+      JSON.stringify({ tier: 'standard' }),
+    );
+
+    const { runtime, invokeSpy } = makeCapturingRuntime('Hello!');
+    const ctx = makeCtx({ runtime, cwd: wsDir });
+    const job = makeJob();
+
+    await executeCronJob(job, ctx);
+
+    expect(invokeSpy).toHaveBeenCalledOnce();
+    const passedPrompt = invokeSpy.mock.calls[0][0].prompt;
+    expect(passedPrompt).not.toContain('Permission note:');
+  });
+});
