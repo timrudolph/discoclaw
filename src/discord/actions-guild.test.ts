@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ChannelType } from 'discord.js';
-import { executeGuildAction } from './actions-guild.js';
+import { executeGuildAction, isoToSnowflake } from './actions-guild.js';
 import type { ActionContext } from './actions.js';
 
 // ---------------------------------------------------------------------------
@@ -204,18 +204,54 @@ describe('roleAdd / roleRemove', () => {
   });
 });
 
-describe('searchMessages', () => {
-  it('finds matching messages', async () => {
-    const msg1 = { id: 'm1', content: 'Hello world', author: { username: 'alice' } };
-    const msg2 = { id: 'm2', content: 'Goodbye', author: { username: 'bob' } };
-    const messages = new Map([['m1', msg1], ['m2', msg2]]);
+describe('isoToSnowflake', () => {
+  it('passes through raw snowflake IDs', () => {
+    expect(isoToSnowflake('123456789012345678')).toBe('123456789012345678');
+  });
 
-    const ch = {
+  it('converts ISO date to snowflake', () => {
+    const result = isoToSnowflake('2025-01-01T00:00:00Z');
+    expect(result).not.toBeNull();
+    // Should be a large numeric string
+    expect(/^\d+$/.test(result!)).toBe(true);
+  });
+
+  it('returns null for invalid input', () => {
+    expect(isoToSnowflake('not-a-date')).toBeNull();
+    expect(isoToSnowflake('')).toBeNull();
+  });
+});
+
+describe('searchMessages', () => {
+  /** Helper: create a channel with a paginated messages.fetch mock. */
+  function makeChannel(pages: Array<Array<{ id: string; content: string; author: { username: string }; createdAt?: Date }>>) {
+    let callIdx = 0;
+    return {
       id: 'ch1',
       name: 'general',
       type: ChannelType.GuildText,
-      messages: { fetch: vi.fn(async () => messages) },
+      messages: {
+        fetch: vi.fn(async () => {
+          const page = pages[callIdx] ?? [];
+          callIdx++;
+          const map = new Map(page.map((m) => [m.id, m]));
+          return map;
+        }),
+      },
     };
+  }
+
+  it('finds matching messages across pages', async () => {
+    // Page 1: exactly 100 messages so pagination continues.
+    const page1 = Array.from({ length: 100 }, (_, i) => ({
+      id: String(10200 - i),
+      content: i === 5 ? 'Hello world' : 'noise',
+      author: { username: i === 5 ? 'bob' : 'filler' },
+    }));
+    const page2 = [
+      { id: '10050', content: 'Hello again', author: { username: 'carol' } },
+    ];
+    const ch = makeChannel([page1, page2]);
     const ctx = makeCtx({ channels: [ch] });
 
     const result = await executeGuildAction(
@@ -224,8 +260,86 @@ describe('searchMessages', () => {
     );
 
     expect(result.ok).toBe(true);
-    expect((result as any).summary).toContain('[alice] Hello world');
-    expect((result as any).summary).not.toContain('Goodbye');
+    const summary = (result as any).summary as string;
+    expect(summary).toContain('[bob]');
+    expect(summary).toContain('[carol]');
+    expect(summary).toContain('2 found');
+  });
+
+  it('stops scanning when channel is exhausted', async () => {
+    // Single partial page (< 100 messages).
+    const page1 = [
+      { id: '50', content: 'Match here', author: { username: 'alice' } },
+    ];
+    const ch = makeChannel([page1]);
+    const ctx = makeCtx({ channels: [ch] });
+
+    const result = await executeGuildAction(
+      { type: 'searchMessages', query: 'match', channel: '#general' },
+      ctx,
+    );
+
+    expect(result.ok).toBe(true);
+    expect(ch.messages.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops scanning when after boundary is hit mid-page', async () => {
+    // Use snowflake-length IDs. after boundary = message ID 15000000000000000150.
+    const page1 = [
+      { id: '15000000000000000200', content: 'Match A', author: { username: 'alice' } },
+      { id: '15000000000000000180', content: 'Match B', author: { username: 'bob' } },
+      { id: '15000000000000000160', content: 'Match C', author: { username: 'carol' } },
+      { id: '15000000000000000140', content: 'Match D past boundary', author: { username: 'dave' } },
+    ];
+    const ch = makeChannel([page1]);
+    const ctx = makeCtx({ channels: [ch] });
+
+    const result = await executeGuildAction(
+      { type: 'searchMessages', query: 'match', channel: '#general', after: '15000000000000000150' },
+      ctx,
+    );
+
+    expect(result.ok).toBe(true);
+    const summary = (result as any).summary as string;
+    // Only A, B, C should match (IDs > boundary).
+    expect(summary).toContain('3 found');
+    expect(summary).not.toContain('dave');
+  });
+
+  it('respects maxPages cap', async () => {
+    // 100 messages per page, maxPages = 1 → only 1 fetch call.
+    const fullPage = Array.from({ length: 100 }, (_, i) => ({
+      id: String(10000 - i),
+      content: i === 50 ? 'target' : 'noise',
+      author: { username: 'user' },
+    }));
+    const ch = makeChannel([fullPage, fullPage]);
+    const ctx = makeCtx({ channels: [ch] });
+
+    const result = await executeGuildAction(
+      { type: 'searchMessages', query: 'target', channel: '#general', maxPages: 1 },
+      ctx,
+    );
+
+    expect(result.ok).toBe(true);
+    expect(ch.messages.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns no-match message with scan count', async () => {
+    const page1 = [
+      { id: '200', content: 'nothing relevant', author: { username: 'alice' } },
+    ];
+    const ch = makeChannel([page1]);
+    const ctx = makeCtx({ channels: [ch] });
+
+    const result = await executeGuildAction(
+      { type: 'searchMessages', query: 'zzzzz', channel: '#general' },
+      ctx,
+    );
+
+    expect(result.ok).toBe(true);
+    expect((result as any).summary).toContain('No messages matching');
+    expect((result as any).summary).toContain('scanned 1');
   });
 });
 

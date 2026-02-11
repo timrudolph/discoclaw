@@ -12,7 +12,8 @@ export type GuildActionRequest =
   | { type: 'roleInfo' }
   | { type: 'roleAdd'; userId: string; role: string }
   | { type: 'roleRemove'; userId: string; role: string }
-  | { type: 'searchMessages'; query: string; channel?: string; limit?: number }
+  | { type: 'searchMessages'; query: string; channel?: string; limit?: number;
+      before?: string; after?: string; maxPages?: number }
   | { type: 'eventList' }
   | { type: 'eventCreate'; name: string; startTime: string; endTime?: string; description?: string; channelId?: string; location?: string }
   | { type: 'eventEdit'; eventId: string; name?: string; startTime?: string; endTime?: string; description?: string; location?: string }
@@ -27,6 +28,28 @@ export const GUILD_ACTION_TYPES = new Set<string>(Object.keys(GUILD_TYPE_MAP));
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+// Discord epoch: 2015-01-01T00:00:00.000Z
+const DISCORD_EPOCH = 1420070400000n;
+
+/**
+ * Convert an ISO date string or raw snowflake ID to a Discord snowflake string.
+ * Returns null on invalid input.
+ */
+export function isoToSnowflake(input: string): string | null {
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+
+  // Already a snowflake (numeric string, 17-20 digits)?
+  if (/^\d{17,20}$/.test(trimmed)) return trimmed;
+
+  // Try ISO date parse.
+  const ms = Date.parse(trimmed);
+  if (isNaN(ms)) return null;
+
+  const snowflake = (BigInt(ms) - DISCORD_EPOCH) << 22n;
+  return snowflake.toString();
+}
 
 function resolveRole(guild: Guild, ref: string): Role | undefined {
   // Try by ID.
@@ -107,22 +130,56 @@ export async function executeGuildAction(
       }
 
       const limit = Math.min(Math.max(1, action.limit ?? 25), 50);
-      const messages = await (channel as any).messages.fetch({ limit: 100 }) as any;
+      const maxPages = Math.min(Math.max(1, action.maxPages ?? 5), 10);
+      const beforeSnowflake = action.before ? isoToSnowflake(action.before) : null;
+      const afterSnowflake = action.after ? isoToSnowflake(action.after) : null;
+
       const query = action.query.toLowerCase();
-      const matches = [...messages.values()]
-        .filter((m: any) => m.content?.toLowerCase().includes(query))
-        .slice(0, limit);
+      const matches: any[] = [];
+      let cursor: string | undefined = beforeSnowflake ?? undefined;
+      let totalScanned = 0;
+      let hitAfterBound = false;
+
+      for (let page = 0; page < maxPages; page++) {
+        const fetchOpts: any = { limit: 100 };
+        if (cursor) fetchOpts.before = cursor;
+
+        const batch = await (channel as any).messages.fetch(fetchOpts);
+        const msgs = [...batch.values()];
+        if (msgs.length === 0) break;
+
+        for (const m of msgs) {
+          // If we've passed the after boundary, stop entirely.
+          if (afterSnowflake && BigInt(m.id) <= BigInt(afterSnowflake)) {
+            hitAfterBound = true;
+            break;
+          }
+
+          totalScanned++;
+          if (m.content?.toLowerCase().includes(query) && matches.length < limit) {
+            matches.push(m);
+          }
+        }
+
+        // Update cursor to oldest message in this batch.
+        cursor = msgs[msgs.length - 1].id;
+
+        if (hitAfterBound) break;
+        if (matches.length >= limit) break;
+        if (msgs.length < 100) break; // End of channel.
+      }
 
       if (matches.length === 0) {
-        return { ok: true, summary: `No messages matching "${action.query}" in #${(channel as any).name}` };
+        return { ok: true, summary: `No messages matching "${action.query}" in #${(channel as any).name} (scanned ${totalScanned} messages)` };
       }
 
       const lines = matches.map((m: any) => {
         const author = m.author?.username ?? 'Unknown';
+        const ts = m.createdAt ? fmtTime(m.createdAt) : '';
         const text = (m.content || '').slice(0, 150);
-        return `[${author}] ${text} (id:${m.id})`;
+        return `[${ts}] [${author}] ${text} (id:${m.id})`;
       });
-      return { ok: true, summary: `Search results for "${action.query}" in #${(channel as any).name}:\n${lines.join('\n')}` };
+      return { ok: true, summary: `Search results for "${action.query}" in #${(channel as any).name} (${matches.length} found, ${totalScanned} scanned):\n${lines.join('\n')}` };
     }
 
     case 'eventList': {
@@ -239,13 +296,16 @@ export function guildActionsPromptSection(): string {
 \`\`\`
 - \`role\`: Role name or ID.
 
-**searchMessages** — Search recent messages in a channel (client-side filter, limited):
+**searchMessages** — Search messages in a channel (paginated, client-side filter):
 \`\`\`
 <discord-action>{"type":"searchMessages","query":"keyword","channel":"#general","limit":10}</discord-action>
 \`\`\`
 - \`query\` (required): Text to search for (case-insensitive substring match).
 - \`channel\` (optional): Channel to search; defaults to current channel.
-- \`limit\` (optional): Max results (1–50, default 25). Searches last 100 messages only.
+- \`limit\` (optional): Max results (1–50, default 25).
+- \`before\` (optional): Message ID or ISO date — only search messages before this point.
+- \`after\` (optional): Message ID or ISO date — stop scanning at this point.
+- \`maxPages\` (optional): Pages of 100 messages to scan (1–10, default 5 = 500 messages).
 
 **eventList** — List scheduled events:
 \`\`\`
