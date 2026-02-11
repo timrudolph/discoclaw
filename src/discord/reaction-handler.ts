@@ -1,4 +1,5 @@
 import type { MessageReaction, PartialMessageReaction, User, PartialUser } from 'discord.js';
+import type { ImageData } from '../runtime/types.js';
 import type { BotParams, StatusRef } from '../discord.js';
 import { ensureGroupDir } from '../discord.js';
 import type { KeyedQueue } from '../group-queue.js';
@@ -239,6 +240,7 @@ export function createReactionAddHandler(
           // Non-streaming collect pattern (like cron executor).
           let finalText = '';
           let deltaText = '';
+          const collectedImages: ImageData[] = [];
           const t0 = Date.now();
           metrics.recordInvokeStart('reaction');
           params.log?.info({ flow: 'reaction', sessionKey }, 'obs.invoke.start');
@@ -257,6 +259,8 @@ export function createReactionAddHandler(
               finalText = evt.text;
             } else if (evt.type === 'text_delta') {
               deltaText += evt.text;
+            } else if (evt.type === 'image_data') {
+              collectedImages.push(evt.image);
             } else if (evt.type === 'error') {
               invokeError = evt.message;
               metrics.recordInvokeResult('reaction', Date.now() - t0, false, evt.message);
@@ -306,7 +310,7 @@ export function createReactionAddHandler(
             }
           }
 
-          await replyThenSendChunks(msg as any, processedText);
+          await replyThenSendChunks(msg as any, processedText, collectedImages);
         } catch (err) {
           metrics.increment('discord.reaction.handler_error');
           params.log?.error({ err, sessionKey }, 'reaction:handler failed');

@@ -1,5 +1,5 @@
 import type { Client } from 'discord.js';
-import type { RuntimeAdapter } from '../runtime/types.js';
+import type { RuntimeAdapter, ImageData } from '../runtime/types.js';
 import type { CronJob } from './types.js';
 import type { StatusPoster } from '../discord/status-channel.js';
 import type { LoggerLike } from '../discord/action-types.js';
@@ -147,6 +147,7 @@ export async function executeCronJob(job: CronJob, ctx: CronExecutorContext): Pr
 
     let finalText = '';
     let deltaText = '';
+    const collectedImages: ImageData[] = [];
     const t0 = Date.now();
     for await (const evt of ctx.runtime.invoke({
       prompt,
@@ -159,6 +160,8 @@ export async function executeCronJob(job: CronJob, ctx: CronExecutorContext): Pr
         finalText = evt.text;
       } else if (evt.type === 'text_delta') {
         deltaText += evt.text;
+      } else if (evt.type === 'image_data') {
+        collectedImages.push(evt.image);
       } else if (evt.type === 'error') {
         metrics.recordInvokeResult('cron', Date.now() - t0, false, evt.message);
         metrics.increment('cron.run.error');
@@ -181,7 +184,7 @@ export async function executeCronJob(job: CronJob, ctx: CronExecutorContext): Pr
     ctx.log?.info({ flow: 'cron', jobId: job.id, ms: Date.now() - t0, ok: true }, 'obs.invoke.end');
 
     const output = finalText || deltaText;
-    if (!output.trim()) {
+    if (!output.trim() && collectedImages.length === 0) {
       metrics.increment('cron.run.skipped');
       ctx.log?.warn({ jobId: job.id }, 'cron:exec empty output');
       return;
@@ -219,7 +222,7 @@ export async function executeCronJob(job: CronJob, ctx: CronExecutorContext): Pr
       }
     }
 
-    await sendChunks(targetChannel as any, processedText);
+    await sendChunks(targetChannel as any, processedText, collectedImages);
 
     ctx.log?.info({ jobId: job.id, name: job.name, channel: job.def.channel }, 'cron:exec done');
 

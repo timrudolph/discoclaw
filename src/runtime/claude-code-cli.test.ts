@@ -6,7 +6,12 @@ vi.mock('execa', () => ({
 }));
 
 import { execa } from 'execa';
-import { createClaudeCliRuntime } from './claude-code-cli.js';
+import {
+  createClaudeCliRuntime,
+  extractImageFromUnknownEvent,
+  extractResultContentBlocks,
+  imageDedupeKey,
+} from './claude-code-cli.js';
 
 beforeEach(() => {
   (execa as any).mockReset?.();
@@ -219,5 +224,170 @@ describe('Claude CLI runtime adapter (smoke)', () => {
 
     const callArgs = execaMock.mock.calls[0]?.[1] ?? [];
     expect(callArgs).not.toContain('--strict-mcp-config');
+  });
+
+  it('stream-json emits image_data from streaming content blocks', async () => {
+    const execaMock = execa as any;
+    execaMock.mockImplementation(() => makeProcessStreamJson({
+      lines: [
+        JSON.stringify({ type: 'message_delta', text: 'Here is an image:' }),
+        JSON.stringify({ type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'iVBORw0KGgo=' } }),
+      ],
+      exitCode: 0,
+    }));
+
+    const rt = createClaudeCliRuntime({
+      claudeBin: 'claude',
+      dangerouslySkipPermissions: true,
+      outputFormat: 'stream-json',
+    });
+
+    const events: any[] = [];
+    for await (const evt of rt.invoke({ prompt: 'p', model: 'opus', cwd: '/tmp' })) {
+      events.push(evt);
+    }
+
+    const imageEvents = events.filter((e) => e.type === 'image_data');
+    expect(imageEvents).toHaveLength(1);
+    expect(imageEvents[0].image.mediaType).toBe('image/png');
+    expect(imageEvents[0].image.base64).toBe('iVBORw0KGgo=');
+  });
+
+  it('stream-json emits image_data from result content block arrays', async () => {
+    const execaMock = execa as any;
+    execaMock.mockImplementation(() => makeProcessStreamJson({
+      lines: [
+        JSON.stringify({
+          type: 'result',
+          result: [
+            { type: 'text', text: 'Generated image:' },
+            { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: '/9j/4AAQ' } },
+          ],
+        }),
+      ],
+      exitCode: 0,
+    }));
+
+    const rt = createClaudeCliRuntime({
+      claudeBin: 'claude',
+      dangerouslySkipPermissions: true,
+      outputFormat: 'stream-json',
+    });
+
+    const events: any[] = [];
+    for await (const evt of rt.invoke({ prompt: 'p', model: 'opus', cwd: '/tmp' })) {
+      events.push(evt);
+    }
+
+    const imageEvents = events.filter((e) => e.type === 'image_data');
+    expect(imageEvents).toHaveLength(1);
+    expect(imageEvents[0].image.mediaType).toBe('image/jpeg');
+    expect(events.find((e) => e.type === 'text_final')?.text).toBe('Generated image:');
+  });
+
+  it('deduplicates identical images from streaming and result events', async () => {
+    const imgData = 'iVBORw0KGgo=';
+    const execaMock = execa as any;
+    execaMock.mockImplementation(() => makeProcessStreamJson({
+      lines: [
+        JSON.stringify({ type: 'image', source: { type: 'base64', media_type: 'image/png', data: imgData } }),
+        JSON.stringify({
+          type: 'result',
+          result: [
+            { type: 'text', text: 'Done' },
+            { type: 'image', source: { type: 'base64', media_type: 'image/png', data: imgData } },
+          ],
+        }),
+      ],
+      exitCode: 0,
+    }));
+
+    const rt = createClaudeCliRuntime({
+      claudeBin: 'claude',
+      dangerouslySkipPermissions: true,
+      outputFormat: 'stream-json',
+    });
+
+    const events: any[] = [];
+    for await (const evt of rt.invoke({ prompt: 'p', model: 'opus', cwd: '/tmp' })) {
+      events.push(evt);
+    }
+
+    const imageEvents = events.filter((e) => e.type === 'image_data');
+    expect(imageEvents).toHaveLength(1);
+  });
+});
+
+describe('extractImageFromUnknownEvent', () => {
+  it('extracts direct image content block', () => {
+    const evt = { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'abc123' } };
+    const result = extractImageFromUnknownEvent(evt);
+    expect(result).toEqual({ base64: 'abc123', mediaType: 'image/png' });
+  });
+
+  it('extracts content_block_start wrapper', () => {
+    const evt = { content_block: { type: 'image', source: { type: 'base64', media_type: 'image/webp', data: 'xyz' } } };
+    const result = extractImageFromUnknownEvent(evt);
+    expect(result).toEqual({ base64: 'xyz', mediaType: 'image/webp' });
+  });
+
+  it('returns null for missing fields', () => {
+    expect(extractImageFromUnknownEvent(null)).toBeNull();
+    expect(extractImageFromUnknownEvent({})).toBeNull();
+    expect(extractImageFromUnknownEvent({ type: 'image' })).toBeNull();
+    expect(extractImageFromUnknownEvent({ type: 'image', source: { type: 'url' } })).toBeNull();
+  });
+
+  it('returns null for oversized base64', () => {
+    const bigData = 'a'.repeat(26 * 1024 * 1024);
+    const evt = { type: 'image', source: { type: 'base64', media_type: 'image/png', data: bigData } };
+    expect(extractImageFromUnknownEvent(evt)).toBeNull();
+  });
+});
+
+describe('extractResultContentBlocks', () => {
+  it('extracts text and images from array result', () => {
+    const evt = {
+      type: 'result',
+      result: [
+        { type: 'text', text: 'Hello' },
+        { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'abc' } },
+      ],
+    };
+    const result = extractResultContentBlocks(evt);
+    expect(result).not.toBeNull();
+    expect(result!.text).toBe('Hello');
+    expect(result!.images).toHaveLength(1);
+    expect(result!.images[0].mediaType).toBe('image/png');
+  });
+
+  it('returns null for plain string result', () => {
+    const evt = { type: 'result', result: 'just text' };
+    expect(extractResultContentBlocks(evt)).toBeNull();
+  });
+
+  it('returns null for non-result event', () => {
+    expect(extractResultContentBlocks({ type: 'message_delta', text: 'hi' })).toBeNull();
+  });
+
+  it('handles empty array', () => {
+    const result = extractResultContentBlocks({ type: 'result', result: [] });
+    expect(result).not.toBeNull();
+    expect(result!.text).toBe('');
+    expect(result!.images).toHaveLength(0);
+  });
+});
+
+describe('imageDedupeKey', () => {
+  it('creates consistent key for same image', () => {
+    const img = { base64: 'abc', mediaType: 'image/png' };
+    expect(imageDedupeKey(img)).toBe('image/png:abc');
+    expect(imageDedupeKey(img)).toBe(imageDedupeKey({ ...img }));
+  });
+
+  it('different images produce different keys', () => {
+    const a = { base64: 'abc', mediaType: 'image/png' };
+    const b = { base64: 'xyz', mediaType: 'image/png' };
+    expect(imageDedupeKey(a)).not.toBe(imageDedupeKey(b));
   });
 });

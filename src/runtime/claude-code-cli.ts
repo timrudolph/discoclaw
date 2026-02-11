@@ -1,6 +1,6 @@
 import process from 'node:process';
 import { execa, type ResultPromise } from 'execa';
-import type { EngineEvent, RuntimeAdapter, RuntimeInvokeParams } from './types.js';
+import type { EngineEvent, ImageData, RuntimeAdapter, RuntimeInvokeParams } from './types.js';
 import { SessionFileScanner } from './session-scanner.js';
 import { ProcessPool } from './process-pool.js';
 
@@ -53,6 +53,62 @@ export function extractResultText(evt: unknown): string | null {
     return anyEvt.result;
   }
   return null;
+}
+
+/** Max base64 size (25 MB) — Discord's upload limit. */
+const MAX_IMAGE_BASE64_LEN = 25 * 1024 * 1024;
+
+/** Max images per invocation to prevent runaway accumulation. */
+const MAX_IMAGES_PER_INVOCATION = 10;
+
+/** Extract an image content block from a Claude CLI stream-json event. */
+export function extractImageFromUnknownEvent(evt: unknown): ImageData | null {
+  if (!evt || typeof evt !== 'object') return null;
+  const anyEvt = evt as Record<string, unknown>;
+
+  // Direct image content block: { type: 'image', source: { type: 'base64', media_type, data } }
+  if (anyEvt.type === 'image' && anyEvt.source && typeof anyEvt.source === 'object') {
+    const src = anyEvt.source as Record<string, unknown>;
+    if (src.type === 'base64' && typeof src.media_type === 'string' && typeof src.data === 'string') {
+      if (src.data.length > MAX_IMAGE_BASE64_LEN) return null;
+      return { base64: src.data, mediaType: src.media_type };
+    }
+  }
+
+  // Wrapped in content_block_start: { content_block: { type: 'image', source: { ... } } }
+  if (anyEvt.content_block && typeof anyEvt.content_block === 'object') {
+    return extractImageFromUnknownEvent(anyEvt.content_block);
+  }
+
+  return null;
+}
+
+/** Extract text and images from a result event with content block arrays. */
+export function extractResultContentBlocks(evt: unknown): { text: string; images: ImageData[] } | null {
+  if (!evt || typeof evt !== 'object') return null;
+  const anyEvt = evt as Record<string, unknown>;
+  if (anyEvt.type !== 'result' || !Array.isArray(anyEvt.result)) return null;
+
+  let text = '';
+  const images: ImageData[] = [];
+
+  for (const block of anyEvt.result) {
+    if (!block || typeof block !== 'object') continue;
+    const b = block as Record<string, unknown>;
+    if (b.type === 'text' && typeof b.text === 'string') {
+      text += b.text;
+    } else if (b.type === 'image') {
+      const img = extractImageFromUnknownEvent(b);
+      if (img) images.push(img);
+    }
+  }
+
+  return { text, images };
+}
+
+/** Create a dedupe key for an image (mediaType + data prefix). */
+export function imageDedupeKey(img: ImageData): string {
+  return img.mediaType + ':' + img.base64;
 }
 
 /**
@@ -294,6 +350,8 @@ export function createClaudeCliRuntime(opts: ClaudeCliRuntimeOpts): RuntimeAdapt
     let stdoutEnded = false;
     let stderrEnded = subprocess.stderr == null;
     let procResult: any | null = null;
+    const seenImages = new Set<string>();
+    let imageCount = 0;
 
     subprocess.stdout.on('data', (chunk) => {
       const s = String(chunk);
@@ -329,6 +387,32 @@ export function createClaudeCliRuntime(opts: ClaudeCliRuntimeOpts): RuntimeAdapt
           // Capture result text as fallback (don't merge — avoids double-counting with deltas).
           const rt = extractResultText(evt);
           if (rt) resultText = rt;
+
+          // Check for result events with content block arrays (text + images).
+          const blocks = extractResultContentBlocks(evt);
+          if (blocks) {
+            if (blocks.text) resultText = blocks.text;
+            for (const img of blocks.images) {
+              if (imageCount >= MAX_IMAGES_PER_INVOCATION) break;
+              const key = imageDedupeKey(img);
+              if (!seenImages.has(key)) {
+                seenImages.add(key);
+                imageCount++;
+                push({ type: 'image_data', image: img });
+              }
+            }
+          }
+
+          // Try extracting a single image from streaming content blocks.
+          const img = extractImageFromUnknownEvent(evt);
+          if (img && imageCount < MAX_IMAGES_PER_INVOCATION) {
+            const key = imageDedupeKey(img);
+            if (!seenImages.has(key)) {
+              seenImages.add(key);
+              imageCount++;
+              push({ type: 'image_data', image: img });
+            }
+          }
         }
       }
     });
@@ -405,6 +489,17 @@ export function createClaudeCliRuntime(opts: ClaudeCliRuntimeOpts): RuntimeAdapt
           if (text) {
             merged += text;
             push({ type: 'text_delta', text });
+          }
+          if (evt) {
+            const img = extractImageFromUnknownEvent(evt);
+            if (img && imageCount < MAX_IMAGES_PER_INVOCATION) {
+              const key = imageDedupeKey(img);
+              if (!seenImages.has(key)) {
+                seenImages.add(key);
+                imageCount++;
+                push({ type: 'image_data', image: img });
+              }
+            }
           }
         }
       }

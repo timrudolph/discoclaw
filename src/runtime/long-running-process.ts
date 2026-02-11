@@ -1,9 +1,12 @@
 import process from 'node:process';
 import { execa, type ResultPromise } from 'execa';
-import type { EngineEvent } from './types.js';
+import type { EngineEvent, ImageData } from './types.js';
 import {
   extractTextFromUnknownEvent,
   extractResultText,
+  extractImageFromUnknownEvent,
+  extractResultContentBlocks,
+  imageDedupeKey,
   stripToolUseBlocks,
   tryParseJsonLine,
 } from './claude-code-cli.js';
@@ -51,6 +54,8 @@ export class LongRunningProcess {
   private turnMerged = '';
   private turnResultText = '';
   private turnInToolUse = false;
+  private turnSeenImages = new Set<string>();
+  private turnImageCount = 0;
 
   /** Called when this process is added to / removed from an external tracking set. */
   onCleanup?: () => void;
@@ -159,6 +164,8 @@ export class LongRunningProcess {
     this.turnMerged = '';
     this.turnResultText = '';
     this.turnInToolUse = false;
+    this.turnSeenImages = new Set<string>();
+    this.turnImageCount = 0;
     this.stdoutBuffer = '';
 
     // Wire up stdout parsing for this turn.
@@ -280,6 +287,16 @@ export class LongRunningProcess {
       if (anyEvt.type === 'result') {
         const rt = extractResultText(evt);
         if (rt) this.turnResultText = rt;
+
+        // Extract images from result content block arrays.
+        const blocks = extractResultContentBlocks(evt);
+        if (blocks) {
+          if (blocks.text) this.turnResultText = blocks.text;
+          for (const img of blocks.images) {
+            this.pushImageIfNew(img);
+          }
+        }
+
         this.finalizeTurn();
         return;
       }
@@ -293,6 +310,10 @@ export class LongRunningProcess {
         if (hasToolOpen) this.turnInToolUse = true;
         if (!this.turnInToolUse) this.pushEvent({ type: 'text_delta', text });
         if (hasToolClose) this.turnInToolUse = false;
+      } else {
+        // Try extracting a single image from streaming content blocks.
+        const img = extractImageFromUnknownEvent(evt);
+        if (img) this.pushImageIfNew(img);
       }
     }
   }
@@ -375,6 +396,15 @@ export class LongRunningProcess {
     if (this.cleanupCalled) return;
     this.cleanupCalled = true;
     this.onCleanup?.();
+  }
+
+  private pushImageIfNew(img: ImageData): void {
+    if (this.turnImageCount >= 10) return;
+    const key = imageDedupeKey(img);
+    if (this.turnSeenImages.has(key)) return;
+    this.turnSeenImages.add(key);
+    this.turnImageCount++;
+    this.pushEvent({ type: 'image_data', image: img });
   }
 
   private pushDoneOnce(): void {

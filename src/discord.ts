@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { ActivityType, Client, GatewayIntentBits, Partials } from 'discord.js';
 import type { PresenceData } from 'discord.js';
-import type { RuntimeAdapter } from './runtime/types.js';
+import type { RuntimeAdapter, ImageData } from './runtime/types.js';
 import type { SessionManager } from './sessions.js';
 import { isAllowlisted } from './discord/allowlist.js';
 import { KeyedQueue } from './group-queue.js';
@@ -421,6 +421,7 @@ export function createMessageCreateHandler(params: Omit<BotParams, 'token'>, que
           let currentPrompt = prompt;
           let followUpDepth = 0;
           let processedText = '';
+          const collectedImages: ImageData[] = [];
 
           // -- auto-follow-up loop --
           // When query actions (channelList, readMessages, etc.) succeed, re-invoke
@@ -515,6 +516,8 @@ export function createMessageCreateHandler(params: Omit<BotParams, 'token'>, que
                   const prefix = evt.stream === 'stderr' ? '[stderr] ' : '[stdout] ';
                   deltaText += (deltaText && !deltaText.endsWith('\n') ? '\n' : '') + prefix + evt.line + '\n';
                   await maybeEdit(false);
+                } else if (evt.type === 'image_data') {
+                  collectedImages.push(evt.image);
                 }
               } else {
                 // Flat mode: existing behavior unchanged.
@@ -536,6 +539,8 @@ export function createMessageCreateHandler(params: Omit<BotParams, 'token'>, que
                   const prefix = evt.stream === 'stderr' ? '[stderr] ' : '[stdout] ';
                   deltaText += (deltaText && !deltaText.endsWith('\n') ? '\n' : '') + prefix + evt.line + '\n';
                   await maybeEdit(false);
+                } else if (evt.type === 'image_data') {
+                  collectedImages.push(evt.image);
                 }
               }
             }
@@ -591,7 +596,8 @@ export function createMessageCreateHandler(params: Omit<BotParams, 'token'>, que
 
             // Suppression: if a follow-up response is trivially short and has no further
             // actions, suppress it to avoid posting empty messages like "Got it."
-            if (followUpDepth > 0 && actions.length === 0) {
+            // Skip suppression when images are present.
+            if (followUpDepth > 0 && actions.length === 0 && collectedImages.length === 0) {
               const stripped = processedText.replace(/\s+/g, ' ').trim();
               if (stripped.length < 50) {
                 try { await reply.delete(); } catch { /* ignore */ }
@@ -600,7 +606,7 @@ export function createMessageCreateHandler(params: Omit<BotParams, 'token'>, que
               }
             }
 
-            await editThenSendChunks(reply, msg.channel, processedText);
+            await editThenSendChunks(reply, msg.channel, processedText, collectedImages);
 
             // -- auto-follow-up check --
             if (followUpDepth >= params.actionFollowupDepth) break;
