@@ -55,6 +55,14 @@ describe('stripCountSuffix', () => {
   it('strips mixed corruption "beads-6 ・ 5" back to base name', () => {
     expect(stripCountSuffix('beads-6 ・ 5')).toBe('beads');
   });
+
+  it('strips Discord-slugified separator "crons-・-1"', () => {
+    expect(stripCountSuffix('crons-・-1')).toBe('crons');
+  });
+
+  it('strips stacked slugified corruption "beads-6-・-・-6"', () => {
+    expect(stripCountSuffix('beads-6-・-・-6')).toBe('beads');
+  });
 });
 
 // ---------------------------------------------------------------------------

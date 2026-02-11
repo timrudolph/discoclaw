@@ -7,12 +7,22 @@ import type { LoggerLike } from './action-types.js';
 
 /** Strip a trailing ` ・ N` or legacy ` (N)` count suffix from a forum channel name. */
 export function stripCountSuffix(name: string): string {
-  // Strip structured suffix first (katakana dot or parens).
-  let result = name.replace(/\s*(?:・\s*\d+|\(\d+\))$/, '');
-  // Then strip Discord-slugified suffix (e.g. "beads-6" from "beads (6)").
-  // Greedy: a forum named "tasks-3" loses the "-3". Acceptable since
-  // count sync is the only thing that sets these suffixed names.
-  result = result.replace(/-\d+$/, '');
+  let result = name;
+  // Loop to handle stacked corruption (e.g. "beads-6-・-・-6" from multiple
+  // rounds of count-sync running on already-slugified names).
+  let prev: string;
+  do {
+    prev = result;
+    // Strip structured suffix (katakana dot or parens).
+    // Also handle Discord-slugified form where spaces become hyphens: `-・-N`.
+    result = result.replace(/[\s-]*(?:・[\s-]*\d+|\(\d+\))$/, '');
+    // Clean up any trailing separator debris (lone `・` without a count digit).
+    result = result.replace(/[\s-]*・[\s-]*$/, '');
+    // Strip Discord-slugified numeric suffix (e.g. "beads-6" from "beads (6)").
+    // Greedy: a forum named "tasks-3" loses the "-3". Acceptable since
+    // count sync is the only thing that sets these suffixed names.
+    result = result.replace(/-\d+$/, '');
+  } while (result !== prev);
   return result;
 }
 
