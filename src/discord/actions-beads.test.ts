@@ -304,4 +304,13 @@ describe('beadActionsPromptSection', () => {
     expect(section).toContain('beadClose');
     expect(section).toContain('beadList');
   });
+
+  it('includes bead quality guidelines', () => {
+    const section = beadActionsPromptSection();
+    expect(section).toContain('imperative mood');
+    expect(section).toContain('Description');
+    expect(section).toContain('P0');
+    expect(section).toContain('P1');
+    expect(section).toContain('beadUpdate');
+  });
 });
