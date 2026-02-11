@@ -9,6 +9,8 @@ pnpm build
 pnpm dev
 ```
 
+**Optional tools:** Install [`agent-browser`](https://github.com/anthropics/agent-browser) if browser automation is needed. It must be on `PATH` for Claude CLI to launch it.
+
 ## One-Off: Sync Discord Content
 
 ```bash
@@ -87,6 +89,11 @@ Copy `.env.example` -> `.env`. See that file for inline comments.
 | `DISCOCLAW_CRON_ENABLED` | `0` | Master switch for the cron subsystem (forum-based scheduled tasks) |
 | `DISCOCLAW_CRON_FORUM` | *(empty)* | Forum channel name or ID for cron definitions |
 | `DISCOCLAW_CRON_MODEL` | `haiku` | Model used to parse natural-language cron definitions |
+
+### Browser Automation
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AGENT_BROWSER_EXECUTABLE_PATH` | *(empty)* | Path to the browser binary for `agent-browser` (e.g. Chromium). If unset, agent-browser uses its bundled default. |
 
 ### Beads (Task Tracking)
 | Variable | Default | Description |

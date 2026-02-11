@@ -43,6 +43,7 @@ Preflight:
 - If running in a server/guild, set `DISCORD_CHANNEL_IDS` to the minimum set of channels.
 - Confirm `DISCORD_REQUIRE_CHANNEL_CONTEXT=1` and `DISCORD_AUTO_INDEX_CHANNEL_CONTEXT=1`.
 - Run `pnpm sync:discord-context` to ensure base + channel context stubs exist.
+- *(Optional)* If browser automation is desired, confirm `agent-browser` is installed and on `PATH`.
 
 Deploy:
 - `pnpm build`
