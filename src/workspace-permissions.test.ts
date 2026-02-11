@@ -3,7 +3,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { loadWorkspacePermissions, resolveTools, TIER_TOOLS, MAX_NOTE_LENGTH } from './workspace-permissions.js';
+import { loadWorkspacePermissions, probeWorkspacePermissions, resolveTools, TIER_TOOLS, MAX_NOTE_LENGTH } from './workspace-permissions.js';
 
 describe('loadWorkspacePermissions', () => {
   const dirs: string[] = [];
@@ -130,6 +130,77 @@ describe('loadWorkspacePermissions', () => {
     );
     const result = await loadWorkspacePermissions(dir);
     expect(result).toEqual({ tier: 'readonly', note });
+  });
+});
+
+describe('probeWorkspacePermissions', () => {
+  const dirs: string[] = [];
+  afterEach(async () => {
+    for (const d of dirs) {
+      await fs.rm(d, { recursive: true, force: true });
+    }
+    dirs.length = 0;
+  });
+
+  function tmpDir() {
+    const p = fs.mkdtemp(path.join(os.tmpdir(), 'ws-probe-'));
+    p.then((d) => dirs.push(d));
+    return p;
+  }
+
+  it('returns missing when file does not exist', async () => {
+    const dir = await tmpDir();
+    const result = await probeWorkspacePermissions(dir);
+    expect(result).toEqual({ status: 'missing' });
+  });
+
+  it('returns invalid with reason for bad JSON', async () => {
+    const dir = await tmpDir();
+    await fs.writeFile(path.join(dir, 'PERMISSIONS.json'), '{{bad');
+    const result = await probeWorkspacePermissions(dir);
+    expect(result).toEqual({ status: 'invalid', reason: 'invalid JSON' });
+  });
+
+  it('returns invalid with reason for non-object', async () => {
+    const dir = await tmpDir();
+    await fs.writeFile(path.join(dir, 'PERMISSIONS.json'), '"just a string"');
+    const result = await probeWorkspacePermissions(dir);
+    expect(result).toEqual({ status: 'invalid', reason: 'expected object' });
+  });
+
+  it('returns invalid with reason for bad tier', async () => {
+    const dir = await tmpDir();
+    await fs.writeFile(path.join(dir, 'PERMISSIONS.json'), '{"tier":"godmode"}');
+    const result = await probeWorkspacePermissions(dir);
+    expect(result).toEqual({ status: 'invalid', reason: 'invalid tier: "godmode"' });
+  });
+
+  it('returns invalid when custom tier lacks tools array', async () => {
+    const dir = await tmpDir();
+    await fs.writeFile(path.join(dir, 'PERMISSIONS.json'), '{"tier":"custom"}');
+    const result = await probeWorkspacePermissions(dir);
+    expect(result).toEqual({ status: 'invalid', reason: 'custom tier requires tools array' });
+  });
+
+  it('returns valid with permissions for standard tier', async () => {
+    const dir = await tmpDir();
+    await fs.writeFile(path.join(dir, 'PERMISSIONS.json'), '{"tier":"standard"}');
+    const result = await probeWorkspacePermissions(dir);
+    expect(result).toEqual({ status: 'valid', permissions: { tier: 'standard' } });
+  });
+
+  it('returns valid with permissions for custom tier', async () => {
+    const dir = await tmpDir();
+    await fs.writeFile(path.join(dir, 'PERMISSIONS.json'), '{"tier":"custom","tools":["Read","Edit"]}');
+    const result = await probeWorkspacePermissions(dir);
+    expect(result).toEqual({ status: 'valid', permissions: { tier: 'custom', tools: ['Read', 'Edit'] } });
+  });
+
+  it('returns valid with note when present', async () => {
+    const dir = await tmpDir();
+    await fs.writeFile(path.join(dir, 'PERMISSIONS.json'), '{"tier":"readonly","note":"No writes."}');
+    const result = await probeWorkspacePermissions(dir);
+    expect(result).toEqual({ status: 'valid', permissions: { tier: 'readonly', note: 'No writes.' } });
   });
 });
 

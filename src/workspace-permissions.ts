@@ -101,6 +101,68 @@ export async function loadWorkspacePermissions(
   };
 }
 
+export type PermissionProbeResult =
+  | { status: 'valid'; permissions: WorkspacePermissions }
+  | { status: 'missing' }
+  | { status: 'invalid'; reason: string };
+
+/**
+ * Probe workspace/PERMISSIONS.json and return a discriminated result
+ * indicating whether the file is valid, missing, or invalid (with reason).
+ */
+export async function probeWorkspacePermissions(
+  workspaceCwd: string,
+): Promise<PermissionProbeResult> {
+  const filePath = path.join(workspaceCwd, 'PERMISSIONS.json');
+  let raw: string;
+  try {
+    raw = await fs.readFile(filePath, 'utf-8');
+  } catch {
+    return { status: 'missing' };
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return { status: 'invalid', reason: 'invalid JSON' };
+  }
+
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    return { status: 'invalid', reason: 'expected object' };
+  }
+
+  const obj = parsed as Record<string, unknown>;
+
+  if (typeof obj.tier !== 'string' || !VALID_TIERS.has(obj.tier)) {
+    return { status: 'invalid', reason: `invalid tier: ${JSON.stringify(obj.tier)}` };
+  }
+
+  const tier = obj.tier as PermissionTier;
+
+  if (tier === 'custom') {
+    if (!Array.isArray(obj.tools) || !obj.tools.every((t) => typeof t === 'string')) {
+      return { status: 'invalid', reason: 'custom tier requires tools array' };
+    }
+    return {
+      status: 'valid',
+      permissions: {
+        tier,
+        tools: obj.tools as string[],
+        ...validatedNote(obj, filePath),
+      },
+    };
+  }
+
+  return {
+    status: 'valid',
+    permissions: {
+      tier,
+      ...validatedNote(obj, filePath),
+    },
+  };
+}
+
 /**
  * Resolve the effective tools array. Workspace permissions take precedence
  * over the env-var-based tools list.
