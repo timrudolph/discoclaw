@@ -109,21 +109,19 @@ export function truncateCodeBlocks(text: string, maxLines = 20): string {
 }
 
 export function renderDiscordTail(text: string, maxLines = 8, maxWidth = 56): string {
-  const padWidth = maxWidth + 4;
   const normalized = String(text ?? '').replace(/\r\n?/g, '\n');
   const lines = normalized.split('\n').filter((l) => l.length > 0);
   const tail = lines.slice(-maxLines).map((l) =>
-    (l.length > maxWidth ? l.slice(0, maxWidth - 1) + '\u2026' : l).padEnd(padWidth),
+    l.length > maxWidth ? l.slice(0, maxWidth - 1) + '\u2026' : l,
   );
-  while (tail.length < maxLines) tail.unshift(' '.repeat(padWidth));
+  while (tail.length < maxLines) tail.unshift('\u200b');
   const safe = tail.join('\n').replace(/```/g, '``\\`');
   return `\`\`\`text\n${safe}\n\`\`\``;
 }
 
 export function renderActivityTail(label: string, maxLines = 8, maxWidth = 56): string {
-  const padWidth = maxWidth + 4;
   const lines: string[] = [];
-  for (let i = 0; i < maxLines; i++) lines.push(' '.repeat(padWidth));
+  for (let i = 0; i < maxLines; i++) lines.push('\u200b');
   const safe = lines.join('\n').replace(/```/g, '``\\`');
   // Use first non-empty line; fixes existing newline-only edge case
   const singleLine = label.split('\n').find((l) => l.length > 0) ?? '';
