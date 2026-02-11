@@ -4,15 +4,29 @@ import {
   renderActivityTail,
   splitDiscord,
   truncateCodeBlocks,
+  thinkingLabel,
+  selectStreamingOutput,
 } from './discord.js';
 
 const ZWS = '\u200b';
 
-/** Extract the content lines between the opening and closing fences. */
+/** Extract the content lines between the opening and closing fences (for renderDiscordTail). */
 function contentLines(rendered: string): string[] {
   const lines = rendered.split('\n');
   // First line is "```text", last line is "```".
   return lines.slice(1, -1);
+}
+
+/** Extract the bold label line from renderActivityTail output. */
+function activityBoldLabel(rendered: string): string {
+  return rendered.split('\n')[0];
+}
+
+/** Extract the code block content lines from renderActivityTail output (skips bold line + fence). */
+function activityContentLines(rendered: string): string[] {
+  const lines = rendered.split('\n');
+  // Line 0: **label**, Line 1: ```text, Lines 2..N-1: content, Line N: ```
+  return lines.slice(2, -1);
 }
 
 // ---------------------------------------------------------------------------
@@ -142,79 +156,186 @@ describe('renderDiscordTail', () => {
 // renderActivityTail
 // ---------------------------------------------------------------------------
 describe('renderActivityTail', () => {
-  it('normal label → 7 ZWS + label on last line', () => {
+  it('normal label → bold above, 8 ZWS in block', () => {
     const out = renderActivityTail('(working...)');
-    const lines = contentLines(out);
+    expect(activityBoldLabel(out)).toBe('**(working...)**');
+    const lines = activityContentLines(out);
     expect(lines).toHaveLength(8);
-    expect(lines.slice(0, 7).every((l) => l === ZWS)).toBe(true);
-    expect(lines[7]).toBe('(working...)');
+    expect(lines.every((l) => l === ZWS)).toBe(true);
   });
 
-  it('label with triple backticks is escaped', () => {
+  it('label with triple backticks is escaped in bold context', () => {
     const out = renderActivityTail('reading ```file```');
+    // Backticks are escaped in the bold label
+    expect(activityBoldLabel(out)).toBe('**reading \\`\\`\\`file\\`\\`\\`**');
+    // Triple backticks in the code block body are also escaped
     expect(out).not.toContain('```file```');
-    expect(out).toContain('``\\`file``\\`');
-  });
-
-  it('label with newline uses only first line', () => {
-    const out = renderActivityTail('first\nsecond\nthird');
-    const lines = contentLines(out);
+    // Code block content is all ZWS
+    const lines = activityContentLines(out);
     expect(lines).toHaveLength(8);
-    expect(lines[7]).toBe('first');
+    expect(lines.every((l) => l === ZWS)).toBe(true);
   });
 
-  it('label that is only newlines → fallback preserves newline, producing maxLines+1 content lines', () => {
-    // '\n'.split('\n')[0] === '' (falsy) → || label returns '\n'
-    // The newline in the label adds an extra line to the output.
+  it('label with newline uses only first non-empty line', () => {
+    const out = renderActivityTail('first\nsecond\nthird');
+    expect(activityBoldLabel(out)).toBe('**first**');
+    const lines = activityContentLines(out);
+    expect(lines).toHaveLength(8);
+    expect(lines.every((l) => l === ZWS)).toBe(true);
+  });
+
+  it('label that is only newlines → empty bold, 8 ZWS lines', () => {
     const out = renderActivityTail('\n');
-    const lines = contentLines(out);
-    expect(lines).toHaveLength(9);
+    expect(activityBoldLabel(out)).toBe('****');
+    const lines = activityContentLines(out);
+    expect(lines).toHaveLength(8);
+    expect(lines.every((l) => l === ZWS)).toBe(true);
   });
 
   it('custom maxLines is respected', () => {
     const out = renderActivityTail('label', 4);
-    const lines = contentLines(out);
+    expect(activityBoldLabel(out)).toBe('**label**');
+    const lines = activityContentLines(out);
     expect(lines).toHaveLength(4);
-    expect(lines[3]).toBe('label');
+    expect(lines.every((l) => l === ZWS)).toBe(true);
   });
 
-  it('maxLines = 0 → zero content lines (loop runs -1 times = no-op)', () => {
+  it('maxLines = 0 → bold label, empty code block', () => {
     const out = renderActivityTail('label', 0);
-    const lines = contentLines(out);
-    // maxLines - 1 = -1 → loop doesn't run, but label is still pushed → 1 line
-    // Actually: for (i < -1) doesn't run, then push label → lines = [label]
-    // But maxLines=0 means we want 0 lines... the function doesn't guard this.
-    // It will produce 1 line (just the label). Let's document this behavior.
+    expect(activityBoldLabel(out)).toBe('**label**');
+    // The join of zero lines produces '' between the fences, yielding one empty line
+    const lines = activityContentLines(out);
     expect(lines).toHaveLength(1);
-    expect(lines[0]).toBe('label');
+    expect(lines[0]).toBe('');
   });
 
-  it('maxLines = 1 → just the label, no padding', () => {
+  it('maxLines = 1 → bold label, one ZWS line in block', () => {
     const out = renderActivityTail('label', 1);
-    const lines = contentLines(out);
+    expect(activityBoldLabel(out)).toBe('**label**');
+    const lines = activityContentLines(out);
     expect(lines).toHaveLength(1);
-    expect(lines[0]).toBe('label');
+    expect(lines[0]).toBe(ZWS);
   });
 
-  it('wraps in ```text fences', () => {
+  it('starts with bold label, then ```text fences', () => {
     const out = renderActivityTail('hi');
-    expect(out.startsWith('```text\n')).toBe(true);
+    expect(out.startsWith('**hi**\n```text\n')).toBe(true);
     expect(out.endsWith('\n```')).toBe(true);
   });
 
   it('long label is truncated to maxWidth with ellipsis', () => {
     const long = 'z'.repeat(100);
     const out = renderActivityTail(long, 8, 56);
-    const lines = contentLines(out);
-    expect(lines[7].length).toBe(56);
-    expect(lines[7].endsWith('\u2026')).toBe(true);
+    const bold = activityBoldLabel(out);
+    // Bold wraps: **...truncated...**
+    // The truncated label is 55 chars + ellipsis = 56 chars, then escaped
+    expect(bold.startsWith('**')).toBe(true);
+    expect(bold.endsWith('**')).toBe(true);
+    expect(bold).toContain('\u2026');
   });
 
   it('label at or under maxWidth is not truncated', () => {
-    const exact = 'w'.repeat(56);
+    const exact = 'a'.repeat(56);
     const out = renderActivityTail(exact, 8, 56);
-    const lines = contentLines(out);
-    expect(lines[7]).toBe(exact);
+    const bold = activityBoldLabel(out);
+    expect(bold).toBe(`**${exact}**`);
+  });
+
+  it('markdown special chars in label are escaped', () => {
+    const out = renderActivityTail('*bold* _italic_ ~strike~');
+    expect(activityBoldLabel(out)).toBe('**\\*bold\\* \\_italic\\_ \\~strike\\~**');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// thinkingLabel
+// ---------------------------------------------------------------------------
+describe('thinkingLabel', () => {
+  it('tick 0 → Thinking.', () => {
+    expect(thinkingLabel(0)).toBe('Thinking.');
+  });
+
+  it('tick 1 → Thinking..', () => {
+    expect(thinkingLabel(1)).toBe('Thinking..');
+  });
+
+  it('tick 2 → Thinking...', () => {
+    expect(thinkingLabel(2)).toBe('Thinking...');
+  });
+
+  it('tick 3 → Thinking (no dots)', () => {
+    expect(thinkingLabel(3)).toBe('Thinking');
+  });
+
+  it('tick 4 → wraps back to Thinking.', () => {
+    expect(thinkingLabel(4)).toBe('Thinking.');
+  });
+
+  it('tick 7 → Thinking (no dots)', () => {
+    expect(thinkingLabel(7)).toBe('Thinking');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// selectStreamingOutput
+// ---------------------------------------------------------------------------
+describe('selectStreamingOutput', () => {
+  it('deltaText wins over all others', () => {
+    const out = selectStreamingOutput({
+      deltaText: 'streaming text',
+      activityLabel: 'Reading file...',
+      finalText: 'final answer',
+      statusTick: 0,
+    });
+    // Should be a code block (renderDiscordTail)
+    expect(out).toContain('```text');
+    expect(out).toContain('streaming text');
+    expect(out).not.toContain('**');
+  });
+
+  it('activityLabel wins over finalText and default', () => {
+    const out = selectStreamingOutput({
+      deltaText: '',
+      activityLabel: 'Reading file...',
+      finalText: 'final answer',
+      statusTick: 0,
+    });
+    // Should be bold + code block (renderActivityTail)
+    expect(out).toContain('**Reading file...**');
+    expect(out).toContain('```text');
+  });
+
+  it('finalText wins over default thinking', () => {
+    const out = selectStreamingOutput({
+      deltaText: '',
+      activityLabel: '',
+      finalText: 'final answer',
+      statusTick: 0,
+    });
+    expect(out).toContain('```text');
+    expect(out).toContain('final answer');
+    expect(out).not.toContain('**');
+  });
+
+  it('empty deltaText/activityLabel/finalText → returns thinking label', () => {
+    const out = selectStreamingOutput({
+      deltaText: '',
+      activityLabel: '',
+      finalText: '',
+      statusTick: 2,
+    });
+    // tick 2 → "Thinking..."
+    expect(out).toContain('**Thinking...**');
+    expect(out).toContain('```text');
+  });
+
+  it('thinking label tick advances correctly', () => {
+    const out0 = selectStreamingOutput({ deltaText: '', activityLabel: '', finalText: '', statusTick: 0 });
+    const out1 = selectStreamingOutput({ deltaText: '', activityLabel: '', finalText: '', statusTick: 1 });
+    const out3 = selectStreamingOutput({ deltaText: '', activityLabel: '', finalText: '', statusTick: 3 });
+    expect(out0).toContain('**Thinking.**');
+    expect(out1).toContain('**Thinking..**');
+    expect(out3).toContain('**Thinking**');
   });
 });
 

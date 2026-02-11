@@ -121,9 +121,31 @@ export function renderDiscordTail(text: string, maxLines = 8, maxWidth = 56): st
 
 export function renderActivityTail(label: string, maxLines = 8, maxWidth = 56): string {
   const lines: string[] = [];
-  for (let i = 0; i < maxLines - 1; i++) lines.push('\u200b');
-  const singleLine = label.split('\n')[0] || label;
-  lines.push(singleLine.length > maxWidth ? singleLine.slice(0, maxWidth - 1) + '\u2026' : singleLine);
+  for (let i = 0; i < maxLines; i++) lines.push('\u200b');
   const safe = lines.join('\n').replace(/```/g, '``\\`');
-  return `\`\`\`text\n${safe}\n\`\`\``;
+  // Use first non-empty line; fixes existing newline-only edge case
+  const singleLine = label.split('\n').find((l) => l.length > 0) ?? '';
+  const truncated = singleLine.length > maxWidth
+    ? singleLine.slice(0, maxWidth - 1) + '\u2026'
+    : singleLine;
+  // Escape markdown chars that would break bold context or create formatting artifacts
+  const safeLabel = truncated.replace(/([*_~|`\\[\]])/g, '\\$1');
+  return `**${safeLabel}**\n\`\`\`text\n${safe}\n\`\`\``;
+}
+
+export function thinkingLabel(tick: number): string {
+  const dotCounts = [1, 2, 3, 0];
+  return 'Thinking' + '.'.repeat(dotCounts[tick % 4]);
+}
+
+export function selectStreamingOutput(opts: {
+  deltaText: string;
+  activityLabel: string;
+  finalText: string;
+  statusTick: number;
+}): string {
+  if (opts.deltaText) return renderDiscordTail(opts.deltaText);
+  if (opts.activityLabel) return renderActivityTail(opts.activityLabel);
+  if (opts.finalText) return renderDiscordTail(opts.finalText);
+  return renderActivityTail(thinkingLabel(opts.statusTick));
 }
