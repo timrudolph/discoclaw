@@ -2,15 +2,31 @@
 
 _Learn about the person you're helping. Update this as you go._
 
+## Basics
 - **Name:**
 - **What to call them:**
 - **Pronouns:** *(optional)*
+
+## Schedule
 - **Timezone:**
-- **Notes:**
+- **Active hours:** *(typical schedule, work days)*
+- **Do not disturb:** *(hours/days when the bot should stay quiet)*
+
+## Preferences
+- **Communication style:** *(terse/normal/detailed, emoji, tone)*
+- **Hard constraints:** *(things to never do, formatting preferences)*
+
+## Work
+- **Primary use case:** *(what they mainly need help with)*
+- **Stack:** *(languages, frameworks, tools)*
+- **Current projects:** *(active work)*
+
+## People
+- **Key contacts:** *(collaborators, team members the bot should know)*
 
 ## Context
 
-*(What do they care about? What projects are they working on? What annoys them? What makes them laugh? Build this over time.)*
+*(Freeform notes built over time — interests, quirks, running context)*
 
 ---
 

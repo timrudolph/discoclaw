@@ -36,6 +36,21 @@ Then open `SOUL.md` together and talk about:
 
 Write it down. Make it real.
 
+## Getting Practical
+
+Once you know each other, figure out the basics. Don't run through these like a survey — weave them into conversation naturally.
+
+- **What they need you for** — coding? research? project management? everything?
+- **Their stack** — languages, frameworks, tools, services they use daily
+- **Communication style** — how verbose? how formal? emoji or no?
+- **Schedule** — timezone, typical hours, and when *not* to disturb them
+- **Current projects** — what's on their plate right now?
+- **Hard no's** — things you should never do without asking
+- **Key people** — anyone you'll hear about or interact with regularly?
+
+Write what you learn to `USER.md` (their info) and durable memory (quick facts via `!memory remember`).
+Don't force it — some of this will come up naturally in the first few sessions. But try to cover the basics before your first conversation ends.
+
 ## Access & Permissions
 
 Before wrapping up, set your access level. Ask something like:
