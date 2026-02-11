@@ -1,6 +1,6 @@
 import { EmbedBuilder } from 'discord.js';
 import type { LoggerLike } from './action-types.js';
-import type { BeadSyncResult } from '../beads/bead-sync.js';
+import type { BeadSyncResult } from '../beads/types.js';
 
 type Sendable = { send(opts: { embeds: EmbedBuilder[] }): Promise<unknown> };
 

@@ -1,5 +1,6 @@
 import type { Client, Guild } from 'discord.js';
-import type { TagMap, BeadData } from './types.js';
+import type { TagMap, BeadData, BeadSyncResult } from './types.js';
+export type { BeadSyncResult } from './types.js';
 import type { LoggerLike } from '../discord/action-types.js';
 import type { StatusPoster } from '../discord/status-channel.js';
 import { bdList, bdUpdate } from './bd-cli.js';
@@ -25,15 +26,6 @@ export type BeadSyncOptions = {
   throttleMs?: number;
   archivedDedupeLimit?: number;
   statusPoster?: StatusPoster;
-};
-
-export type BeadSyncResult = {
-  threadsCreated: number;
-  emojisUpdated: number;
-  starterMessagesUpdated: number;
-  threadsArchived: number;
-  statusesUpdated: number;
-  warnings: number;
 };
 
 function hasLabel(bead: BeadData, label: string): boolean {
