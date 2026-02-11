@@ -1,5 +1,6 @@
+import fs from 'node:fs/promises';
 import { ChannelType } from 'discord.js';
-import type { CategoryChannel, Client, Guild, GuildBasedChannel } from 'discord.js';
+import type { CategoryChannel, Client, ForumChannel, Guild, GuildBasedChannel } from 'discord.js';
 import type { LoggerLike } from './action-types.js';
 
 export type SystemScaffold = {
@@ -207,5 +208,92 @@ export async function ensureSystemScaffold(
   if (crons.id) result.cronsForumId = crons.id;
   if (beads?.id) result.beadsForumId = beads.id;
   return result;
+}
+
+// ---------------------------------------------------------------------------
+// Forum tag bootstrapping
+// ---------------------------------------------------------------------------
+
+/**
+ * Ensure a forum channel has tags matching a tag-map file.
+ * Creates missing tags on the Discord forum and writes their IDs back to the
+ * **dataDir** tag-map file (never mutates repo files).
+ *
+ * Returns the number of tags created.
+ */
+export async function ensureForumTags(
+  guild: Guild,
+  forumId: string,
+  tagMapPath: string,
+  log?: LoggerLike,
+): Promise<number> {
+  let tagMap: Record<string, string>;
+  try {
+    const raw = await fs.readFile(tagMapPath, 'utf8');
+    tagMap = JSON.parse(raw) as Record<string, string>;
+  } catch {
+    return 0;
+  }
+
+  const forum = guild.channels.cache.get(forumId);
+  if (!forum || forum.type !== ChannelType.GuildForum) return 0;
+  const forumChannel = forum as ForumChannel;
+
+  // Build a set of existing tag names (case-insensitive).
+  const existingTags = forumChannel.availableTags ?? [];
+  const existingNames = new Set(existingTags.map((t) => t.name.toLowerCase()));
+
+  // Identify tags that need to be created.
+  const toCreate: string[] = [];
+  for (const [name, id] of Object.entries(tagMap)) {
+    if (id) continue; // Already has a Discord tag ID.
+    if (existingNames.has(name.toLowerCase())) {
+      // Tag exists on the forum but not in our map — backfill the ID.
+      const existing = existingTags.find((t) => t.name.toLowerCase() === name.toLowerCase());
+      if (existing) tagMap[name] = existing.id;
+      continue;
+    }
+    toCreate.push(name);
+  }
+
+  if (toCreate.length === 0 && !Object.values(tagMap).some((v) => !v)) {
+    // Nothing to create, nothing to backfill.
+    return 0;
+  }
+
+  // Discord forums allow max 20 tags.
+  const maxNew = Math.max(0, 20 - existingTags.length);
+  const creating = toCreate.slice(0, maxNew);
+
+  if (creating.length > 0) {
+    try {
+      const newTags = [
+        ...existingTags.map((t) => ({ id: t.id, name: t.name, moderated: t.moderated, emoji: t.emoji })),
+        ...creating.map((name) => ({ name })),
+      ];
+      await forumChannel.edit({ availableTags: newTags as any });
+
+      // Re-fetch to get the created tag IDs.
+      const updated = guild.channels.cache.get(forumId) as ForumChannel | undefined;
+      const updatedTags = updated?.availableTags ?? [];
+      for (const name of creating) {
+        const created = updatedTags.find((t) => t.name.toLowerCase() === name.toLowerCase());
+        if (created) tagMap[name] = created.id;
+      }
+    } catch (err) {
+      log?.warn({ err, forumId, tagCount: creating.length }, 'system-bootstrap: failed to create forum tags');
+      return 0;
+    }
+  }
+
+  // Write the updated tag map back to the dataDir file.
+  try {
+    await fs.writeFile(tagMapPath, JSON.stringify(tagMap, null, 2) + '\n', 'utf8');
+  } catch (err) {
+    log?.warn({ err, tagMapPath }, 'system-bootstrap: failed to write tag map');
+  }
+
+  log?.info({ forumId, tagsCreated: creating.length }, 'system-bootstrap: forum tags ensured');
+  return creating.length;
 }
 

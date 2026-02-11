@@ -23,6 +23,7 @@ import { checkBdAvailable } from './beads/bd-cli.js';
 import { ensureWorkspaceBootstrapFiles } from './workspace-bootstrap.js';
 import { loadRunStats } from './cron/run-stats.js';
 import { seedTagMap } from './cron/discord-sync.js';
+import { ensureForumTags } from './discord/system-bootstrap.js';
 
 const log = pino({ level: process.env.LOG_LEVEL ?? 'info' });
 
@@ -390,9 +391,22 @@ if (cronEnabled && effectiveCronForum) {
       cwd: workspaceCwd,
       allowUserIds,
       log,
+      statsStore: cronStats,
     });
   } catch (err) {
     log.error({ err }, 'cron:forum init failed');
+  }
+
+  // Bootstrap forum tags from the tag map (creates missing tags on the Discord forum).
+  if (system?.guildId) {
+    const guild = client.guilds.cache.get(system.guildId);
+    if (guild) {
+      try {
+        await ensureForumTags(guild, effectiveCronForum, cronTagMapPath, log);
+      } catch (err) {
+        log.warn({ err }, 'cron:forum tag bootstrap failed');
+      }
+    }
   }
 
   log.info(

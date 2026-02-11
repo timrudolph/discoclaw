@@ -5,6 +5,10 @@ import type { LoggerLike } from '../discord/action-types.js';
 import { CronScheduler } from './scheduler.js';
 import { parseCronDefinition } from './parser.js';
 import type { ParsedCronDef } from './types.js';
+import type { CronRunStats } from './run-stats.js';
+import { generateCronId, parseCronIdFromContent } from './run-stats.js';
+import { detectCadence } from './cadence.js';
+import { ensureStatusMessage } from './discord-sync.js';
 
 export type ForumSyncOptions = {
   client: Client;
@@ -16,6 +20,8 @@ export type ForumSyncOptions = {
   cronModel: string;
   cwd: string;
   log?: LoggerLike;
+  // Optional: persistent stats store for cronId recovery and status messages.
+  statsStore?: CronRunStats;
 };
 
 function resolveForumChannel(client: Client, nameOrId: string): ForumChannel | null {
@@ -59,12 +65,38 @@ function scheduleEmbed(name: string, def: ParsedCronDef, nextRun: Date | null): 
     .setTimestamp();
 }
 
+async function recoverCronId(
+  thread: AnyThreadChannel,
+  statsStore: CronRunStats | undefined,
+  log?: LoggerLike,
+): Promise<string | null> {
+  // 1. Check stats store by threadId.
+  if (statsStore) {
+    const record = statsStore.getRecordByThreadId(thread.id);
+    if (record) return record.cronId;
+  }
+
+  // 2. Look for bot status messages with [cronId:...] token.
+  try {
+    const messages = await thread.messages.fetch({ limit: 20 });
+    for (const msg of messages.values()) {
+      if (!msg.author.bot) continue;
+      const cronId = parseCronIdFromContent(msg.content);
+      if (cronId) return cronId;
+    }
+  } catch {
+    // Ignore fetch failures.
+  }
+
+  return null;
+}
+
 async function loadThreadAsCron(
   thread: AnyThreadChannel,
   guildId: string,
   scheduler: CronScheduler,
   runtime: RuntimeAdapter,
-  opts: { cronModel: string; cwd: string; log?: LoggerLike; isNew: boolean; allowUserIds: Set<string> },
+  opts: { cronModel: string; cwd: string; log?: LoggerLike; isNew: boolean; allowUserIds: Set<string>; statsStore?: CronRunStats },
 ): Promise<boolean> {
   const starter = await fetchStarterMessage(thread);
   if (!starter?.content) {
@@ -96,9 +128,16 @@ async function loadThreadAsCron(
     return false;
   }
 
+  // Resolve or mint a stable cronId.
+  let cronId = await recoverCronId(thread, opts.statsStore, opts.log);
+  if (!cronId) {
+    cronId = generateCronId();
+    opts.log?.info({ threadId: thread.id, cronId }, 'cron:forum minted new cronId');
+  }
+
   let job;
   try {
-    job = scheduler.register(thread.id, thread.id, guildId, thread.name, def);
+    job = scheduler.register(thread.id, thread.id, guildId, thread.name, def, cronId);
   } catch (err) {
     opts.log?.error({ err, threadId: thread.id, schedule: def.schedule }, 'cron:forum invalid schedule');
     scheduler.disable(thread.id);
@@ -108,6 +147,27 @@ async function loadThreadAsCron(
       // Ignore send failures.
     }
     return false;
+  }
+
+  // Ensure stats record exists and set cadence.
+  if (opts.statsStore) {
+    try {
+      const cadence = detectCadence(def.schedule);
+      const existingRecord = opts.statsStore.getRecord(cronId);
+      await opts.statsStore.upsertRecord(cronId, thread.id, {
+        cadence,
+        // Preserve existing disabled state.
+        disabled: existingRecord?.disabled ?? false,
+      });
+
+      // Restore disabled state from stats.
+      if (existingRecord?.disabled) {
+        scheduler.disable(thread.id);
+        opts.log?.info({ threadId: thread.id, cronId }, 'cron:forum restored disabled state');
+      }
+    } catch (err) {
+      opts.log?.warn({ err, threadId: thread.id }, 'cron:forum stats upsert failed');
+    }
   }
 
   // Only post confirmation on first registration (not re-parses) to keep threads clean.
@@ -123,13 +183,25 @@ async function loadThreadAsCron(
     } catch {
       // Ignore send failures.
     }
+
+    // Create initial status message for new threads.
+    if (opts.statsStore) {
+      try {
+        const record = opts.statsStore.getRecord(cronId);
+        if (record) {
+          await ensureStatusMessage(thread.client, thread.id, cronId, record, opts.statsStore, opts.log);
+        }
+      } catch {
+        // Best-effort.
+      }
+    }
   }
 
   return true;
 }
 
 export async function initCronForum(opts: ForumSyncOptions): Promise<{ forumId: string }> {
-  const { client, forumChannelNameOrId, allowUserIds, scheduler, runtime, cronModel, cwd, log } = opts;
+  const { client, forumChannelNameOrId, allowUserIds, scheduler, runtime, cronModel, cwd, log, statsStore } = opts;
 
   if (!isSnowflakeId(forumChannelNameOrId)) {
     log?.warn({ forumChannelNameOrId }, 'cron:forum name-based resolution is ambiguous; prefer a channel ID');
@@ -149,7 +221,7 @@ export async function initCronForum(opts: ForumSyncOptions): Promise<{ forumId: 
   let loaded = 0;
   for (const thread of activeThreads.values()) {
     if (thread.archived) continue;
-    const ok = await loadThreadAsCron(thread, guildId, scheduler, runtime, { cronModel, cwd, log, isNew: false, allowUserIds });
+    const ok = await loadThreadAsCron(thread, guildId, scheduler, runtime, { cronModel, cwd, log, isNew: false, allowUserIds, statsStore });
     if (ok) loaded++;
   }
   log?.info({ loaded, total: activeThreads.size }, 'cron:forum initial load complete');
@@ -165,7 +237,7 @@ export async function initCronForum(opts: ForumSyncOptions): Promise<{ forumId: 
       reparseTimers.delete(key);
       void (async () => {
         try {
-          await loadThreadAsCron(thread, guildId, scheduler, runtime, { cronModel, cwd, log, isNew, allowUserIds });
+          await loadThreadAsCron(thread, guildId, scheduler, runtime, { cronModel, cwd, log, isNew, allowUserIds, statsStore });
         } catch (err) {
           log?.error?.({ err, threadId: key }, 'cron:forum reparse failed');
         }
@@ -179,7 +251,7 @@ export async function initCronForum(opts: ForumSyncOptions): Promise<{ forumId: 
       log?.info({ threadId: thread.id, name: thread.name }, 'cron:forum threadCreate');
       // Small delay: Discord may not have the starter message ready immediately after thread creation.
       await new Promise((r) => setTimeout(r, 2000));
-      await loadThreadAsCron(thread, guildId, scheduler, runtime, { cronModel, cwd, log, isNew: true, allowUserIds });
+      await loadThreadAsCron(thread, guildId, scheduler, runtime, { cronModel, cwd, log, isNew: true, allowUserIds, statsStore });
     } catch (err) {
       log?.error({ err, threadId: thread.id }, 'cron:forum threadCreate handler failed');
     }
@@ -190,6 +262,10 @@ export async function initCronForum(opts: ForumSyncOptions): Promise<{ forumId: 
       if (thread.parentId !== forumId) return;
       log?.info({ threadId: thread.id, name: thread.name }, 'cron:forum threadDelete');
       scheduler.unregister(thread.id);
+      // Clean up stats.
+      if (statsStore) {
+        void statsStore.removeByThreadId(thread.id).catch(() => {});
+      }
     } catch (err) {
       log?.error({ err, threadId: thread.id }, 'cron:forum threadDelete handler failed');
     }
@@ -204,9 +280,16 @@ export async function initCronForum(opts: ForumSyncOptions): Promise<{ forumId: 
         if (newThread.archived) {
           log?.info({ threadId: newThread.id }, 'cron:forum thread archived, disabling');
           scheduler.disable(newThread.id);
+          // Persist disabled state.
+          if (statsStore) {
+            const record = statsStore.getRecordByThreadId(newThread.id);
+            if (record) {
+              void statsStore.upsertRecord(record.cronId, newThread.id, { disabled: true }).catch(() => {});
+            }
+          }
         } else {
           log?.info({ threadId: newThread.id }, 'cron:forum thread unarchived, re-loading');
-          await loadThreadAsCron(newThread, guildId, scheduler, runtime, { cronModel, cwd, log, isNew: false, allowUserIds });
+          await loadThreadAsCron(newThread, guildId, scheduler, runtime, { cronModel, cwd, log, isNew: false, allowUserIds, statsStore });
         }
         return;
       }
@@ -214,7 +297,7 @@ export async function initCronForum(opts: ForumSyncOptions): Promise<{ forumId: 
       // Name changed — update the job name (re-parse for good measure).
       if (oldThread.name !== newThread.name) {
         log?.info({ threadId: newThread.id, oldName: oldThread.name, newName: newThread.name }, 'cron:forum thread name changed');
-        await loadThreadAsCron(newThread, guildId, scheduler, runtime, { cronModel, cwd, log, isNew: false, allowUserIds });
+        await loadThreadAsCron(newThread, guildId, scheduler, runtime, { cronModel, cwd, log, isNew: false, allowUserIds, statsStore });
       }
     } catch (err) {
       log?.error({ err, threadId: newThread.id }, 'cron:forum threadUpdate handler failed');
