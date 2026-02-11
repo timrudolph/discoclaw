@@ -23,7 +23,7 @@ export const BOT_PROFILE_ACTION_TYPES = new Set<string>(Object.keys(BOT_PROFILE_
 
 const VALID_STATUSES = new Set(['online', 'idle', 'dnd', 'invisible']);
 
-const ACTIVITY_TYPE_MAP: Record<string, ActivityType> = {
+export const ACTIVITY_TYPE_MAP: Record<string, ActivityType> = {
   Playing: ActivityType.Playing,
   Listening: ActivityType.Listening,
   Watching: ActivityType.Watching,
@@ -74,7 +74,19 @@ export async function executeBotProfileAction(
       }
       let me = guild.members.me;
       if (!me) {
-        me = await guild.members.fetchMe();
+        try {
+          me = await guild.members.fetchMe();
+        } catch {
+          return { ok: false, error: 'Could not fetch bot member in this guild' };
+        }
+      }
+      // Skip if nickname already matches (avoid unnecessary API call).
+      if (me.nickname === action.nickname) {
+        return { ok: true, summary: `Nickname already set to "${action.nickname}"` };
+      }
+      // Skip if no nickname is set and the username already matches.
+      if (me.nickname == null && me.user?.username === action.nickname) {
+        return { ok: true, summary: `Nickname already set to "${action.nickname}"` };
       }
       try {
         await me.setNickname(action.nickname, 'Runtime nickname change via bot profile action');

@@ -150,6 +150,18 @@ describe('startup presence', () => {
     });
   });
 
+  it('status-only sets presence without activities key', async () => {
+    await startDiscordBot(baseParams({ botStatus: 'dnd' }));
+    expect(mockClientInstance.user.setPresence).toHaveBeenCalledWith({ status: 'dnd' });
+  });
+
+  it('activity-only sets presence without status key', async () => {
+    await startDiscordBot(baseParams({ botActivity: 'with beads', botActivityType: 'Playing' }));
+    expect(mockClientInstance.user.setPresence).toHaveBeenCalledWith({
+      activities: [{ name: 'with beads', type: ActivityType.Playing }],
+    });
+  });
+
   it('setPresence not called when neither botStatus nor botActivity set', async () => {
     await startDiscordBot(baseParams());
     expect(mockClientInstance.user.setPresence).not.toHaveBeenCalled();
@@ -169,9 +181,14 @@ describe('startup presence', () => {
 // ---------------------------------------------------------------------------
 
 describe('startup avatar', () => {
-  it('setAvatar called with URL string for URL sources', async () => {
+  it('setAvatar called with URL string for https sources', async () => {
     await startDiscordBot(baseParams({ botAvatar: 'https://example.com/avatar.png' }));
     expect(mockClientInstance.user.setAvatar).toHaveBeenCalledWith('https://example.com/avatar.png');
+  });
+
+  it('setAvatar called with URL string for http sources', async () => {
+    await startDiscordBot(baseParams({ botAvatar: 'http://example.com/avatar.png' }));
+    expect(mockClientInstance.user.setAvatar).toHaveBeenCalledWith('http://example.com/avatar.png');
   });
 
   it('setAvatar called with Buffer for file path sources', async () => {

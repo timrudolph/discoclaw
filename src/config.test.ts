@@ -122,9 +122,14 @@ describe('parseConfig', () => {
     expect(config.botAvatar).toBe('/home/user/avatar.png');
   });
 
-  it('accepts URL for botAvatar', () => {
+  it('accepts https URL for botAvatar', () => {
     const { config } = parseConfig(env({ DISCOCLAW_BOT_AVATAR: 'https://example.com/avatar.png' }));
     expect(config.botAvatar).toBe('https://example.com/avatar.png');
+  });
+
+  it('accepts http URL for botAvatar', () => {
+    const { config } = parseConfig(env({ DISCOCLAW_BOT_AVATAR: 'http://example.com/avatar.png' }));
+    expect(config.botAvatar).toBe('http://example.com/avatar.png');
   });
 
   it('rejects relative path for botAvatar', () => {

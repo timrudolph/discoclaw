@@ -177,7 +177,7 @@ function parseTrimmedString(
 function parseEnum<T extends string>(
   env: NodeJS.ProcessEnv,
   name: string,
-  validValues: T[],
+  validValues: readonly T[],
   defaultValue?: T,
 ): T | undefined {
   const raw = env[name];
@@ -188,6 +188,14 @@ function parseEnum<T extends string>(
     throw new Error(`${name} must be one of ${validValues.join('|')}, got "${raw}"`);
   }
   return match;
+}
+
+function parseAvatarPath(env: NodeJS.ProcessEnv, name: string): string | undefined {
+  const val = parseTrimmedString(env, name);
+  if (val && !val.startsWith('http://') && !val.startsWith('https://') && !val.startsWith('/')) {
+    throw new Error(`${name} must be an absolute file path or URL`);
+  }
+  return val;
 }
 
 function parseRuntimeTools(env: NodeJS.ProcessEnv, warnings: string[]): string[] {
@@ -366,13 +374,7 @@ export function parseConfig(env: NodeJS.ProcessEnv): ParseResult {
       botStatus: parseEnum(env, 'DISCOCLAW_BOT_STATUS', ['online', 'idle', 'dnd', 'invisible'] as const),
       botActivity: parseTrimmedString(env, 'DISCOCLAW_BOT_ACTIVITY'),
       botActivityType: parseEnum(env, 'DISCOCLAW_BOT_ACTIVITY_TYPE', ['Playing', 'Listening', 'Watching', 'Competing', 'Custom'] as const, 'Playing'),
-      botAvatar: (() => {
-        const val = parseTrimmedString(env, 'DISCOCLAW_BOT_AVATAR');
-        if (val && !val.startsWith('http://') && !val.startsWith('https://') && !val.startsWith('/')) {
-          throw new Error('DISCOCLAW_BOT_AVATAR must be an absolute file path or URL');
-        }
-        return val;
-      })(),
+      botAvatar: parseAvatarPath(env, 'DISCOCLAW_BOT_AVATAR'),
     },
     warnings,
     infos,

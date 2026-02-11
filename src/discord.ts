@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { ActivityType, Client, GatewayIntentBits, Partials } from 'discord.js';
+import type { PresenceData } from 'discord.js';
 import type { RuntimeAdapter } from './runtime/types.js';
 import type { SessionManager } from './sessions.js';
 import { isAllowlisted } from './discord/allowlist.js';
@@ -14,6 +15,7 @@ import { hasQueryAction, QUERY_ACTION_TYPES } from './discord/action-categories.
 import type { BeadContext } from './discord/actions-beads.js';
 import type { CronContext } from './discord/actions-crons.js';
 import type { LoggerLike } from './discord/action-types.js';
+import { ACTIVITY_TYPE_MAP } from './discord/actions-bot-profile.js';
 import { fetchMessageHistory } from './discord/message-history.js';
 import { loadSummary, saveSummary, generateSummary } from './discord/summarizer.js';
 import { parseMemoryCommand, handleMemoryCommand } from './discord/memory-commands.js';
@@ -24,7 +26,7 @@ import { ensureSystemScaffold, selectBootstrapGuild } from './discord/system-boo
 import type { SystemScaffold } from './discord/system-bootstrap.js';
 import { NO_MENTIONS } from './discord/allowed-mentions.js';
 import { createReactionAddHandler } from './discord/reaction-handler.js';
-import { splitDiscord, truncateCodeBlocks, renderDiscordTail, renderActivityTail } from './discord/output-utils.js';
+import { splitDiscord, truncateCodeBlocks, renderDiscordTail, renderActivityTail, thinkingLabel, selectStreamingOutput } from './discord/output-utils.js';
 import { buildContextFiles, buildDurableMemorySection, loadWorkspacePaFiles, resolveEffectiveTools } from './discord/prompt-common.js';
 import { editThenSendChunks } from './discord/output-common.js';
 import { messageContentIntentHint, mapRuntimeErrorToUserMessage } from './discord/user-errors.js';
@@ -130,7 +132,7 @@ export async function ensureGroupDir(groupsDir: string, sessionKey: string, botD
   return dir;
 }
 
-export { splitDiscord, truncateCodeBlocks, renderDiscordTail, renderActivityTail };
+export { splitDiscord, truncateCodeBlocks, renderDiscordTail, renderActivityTail, thinkingLabel, selectStreamingOutput };
 
 export type StatusRef = { current: StatusPoster | null };
 
@@ -295,7 +297,7 @@ export function createMessageCreateHandler(params: Omit<BotParams, 'token'>, que
             }
           }
 
-          reply = await msg.reply({ content: renderActivityTail('(working...)'), allowedMentions: NO_MENTIONS });
+          reply = await msg.reply({ content: renderActivityTail(thinkingLabel(0)), allowedMentions: NO_MENTIONS });
 
           const cwd = params.useGroupDirCwd
             ? await ensureGroupDir(params.groupsDir, sessionKey, params.botDisplayName)
@@ -428,6 +430,7 @@ export function createMessageCreateHandler(params: Omit<BotParams, 'token'>, que
             let finalText = '';
             let deltaText = '';
             let activityLabel = '';
+            let statusTick = 1;
             const t0 = Date.now();
             metrics.recordInvokeStart('message');
             params.log?.info({ flow: 'message', sessionKey, followUpDepth }, 'obs.invoke.start');
@@ -447,11 +450,7 @@ export function createMessageCreateHandler(params: Omit<BotParams, 'token'>, que
               const now = Date.now();
               if (!force && now - lastEditAt < minEditIntervalMs) return;
               lastEditAt = now;
-              const out = deltaText
-                ? renderDiscordTail(deltaText)
-                : activityLabel
-                  ? renderActivityTail(activityLabel)
-                  : renderDiscordTail(finalText || '(working...)');
+              const out = selectStreamingOutput({ deltaText, activityLabel, finalText, statusTick: statusTick++ });
               try {
                 await reply.edit({ content: out, allowedMentions: NO_MENTIONS });
               } catch {
@@ -826,15 +825,7 @@ export async function startDiscordBot(params: BotParams): Promise<{ client: Clie
   // Set bot presence (status + activity) on startup.
   if (params.botStatus || params.botActivity) {
     try {
-      const ACTIVITY_TYPE_MAP: Record<string, ActivityType> = {
-        Playing: ActivityType.Playing,
-        Listening: ActivityType.Listening,
-        Watching: ActivityType.Watching,
-        Competing: ActivityType.Competing,
-        Custom: ActivityType.Custom,
-      };
-
-      const presenceData: any = {};
+      const presenceData: PresenceData = {};
       if (params.botStatus) {
         presenceData.status = params.botStatus;
       }

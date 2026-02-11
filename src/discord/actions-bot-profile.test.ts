@@ -125,6 +125,29 @@ describe('executeBotProfileAction — botSetNickname', () => {
     expect(ctx.guild.members.fetchMe).toHaveBeenCalled();
   });
 
+  it('skips API call when nickname already matches', async () => {
+    const ctx = makeCtx({ meNickname: 'Weston' });
+    const result = await executeBotProfileAction({ type: 'botSetNickname', nickname: 'Weston' }, ctx);
+    expect(result).toEqual({ ok: true, summary: 'Nickname already set to "Weston"' });
+    expect(ctx.guild.members.me!.setNickname).not.toHaveBeenCalled();
+  });
+
+  it('skips API call when no nickname set and username matches', async () => {
+    // meNickname defaults to null; username is 'TestBot'
+    const ctx = makeCtx();
+    const result = await executeBotProfileAction({ type: 'botSetNickname', nickname: 'TestBot' }, ctx);
+    expect(result).toEqual({ ok: true, summary: 'Nickname already set to "TestBot"' });
+    expect(ctx.guild.members.me!.setNickname).not.toHaveBeenCalled();
+  });
+
+  it('handles fetchMe failure gracefully', async () => {
+    const ctx = makeCtx({ meNull: true });
+    (ctx.guild.members.fetchMe as any).mockRejectedValueOnce(new Error('fetch failed'));
+    const result = await executeBotProfileAction({ type: 'botSetNickname', nickname: 'Weston' }, ctx);
+    expect(result.ok).toBe(false);
+    expect((result as any).error).toContain('Could not fetch bot member');
+  });
+
   it('handles permission error (50013) gracefully', async () => {
     const ctx = makeCtx();
     const permErr = new Error('Missing Permissions') as any;
