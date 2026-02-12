@@ -424,10 +424,18 @@ export function createMessageCreateHandler(params: Omit<BotParams, 'token'>, que
                 async (result) => {
                   if (progressMessageGone) {
                     try {
-                      const summary = result.error
+                      const statusMsg = result.error
                         ? `Forge failed: ${result.error}`
-                        : `Forge complete. Plan **${result.planId}** ready for review (${result.rounds} round${result.rounds > 1 ? 's' : ''}). Use \`!plan show ${result.planId}\` to view.`;
-                      await msg.channel.send({ content: summary, allowedMentions: NO_MENTIONS });
+                        : `Forge complete. Plan **${result.planId}** ready for review (${result.rounds} round${result.rounds > 1 ? 's' : ''}).`;
+                      await msg.channel.send({ content: statusMsg, allowedMentions: NO_MENTIONS });
+                    } catch {
+                      // best-effort
+                    }
+                  }
+                  // Send plan summary as a follow-up message
+                  if (result.planSummary && !result.error) {
+                    try {
+                      await msg.channel.send({ content: result.planSummary, allowedMentions: NO_MENTIONS });
                     } catch {
                       // best-effort
                     }
