@@ -68,7 +68,7 @@ Two-layer protection against hung Claude Code processes:
 
 **Runtime layer** (`src/runtime/claude-code-cli.ts`): resets a timer on every stdout/stderr `data` event. On timeout, emits a `stream stall: no output for ${ms}ms` error and kills the process. Applies to both `text` and `stream-json` output formats.
 
-**Discord layer** (`src/discord.ts`): tracks `lastEventAt` and `activeToolCount` in the streaming loop. When stall threshold is exceeded and no tools are active, appends a warning to `deltaText`. Enable `DISCOCLAW_SESSION_SCANNING=1` for tool-aware stall suppression (warnings suppressed during tool execution).
+**Discord layer** (`src/discord.ts`, `src/discord/reaction-handler.ts`): both message and reaction handlers track `lastEventAt` and `activeToolCount` in their streaming loops. When stall threshold is exceeded and no tools are active, appends a warning to `deltaText`. Enable `DISCOCLAW_SESSION_SCANNING=1` for tool-aware stall suppression (warnings suppressed during tool execution).
 
 ## Session Scanning & Tool-Aware Streaming
 
