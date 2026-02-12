@@ -612,6 +612,7 @@ export function createClaudeCliRuntime(opts: ClaudeCliRuntimeOpts): RuntimeAdapt
       tryFinalize();
     }).catch((err: any) => {
       clearStallTimer();
+      if (finished) return;
       // Timeouts/spawn errors reject the promise (even with `reject: false`).
       // Surface a stable message and include execa's short/original message when present.
       const timedOut = Boolean(err?.timedOut);

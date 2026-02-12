@@ -346,7 +346,20 @@ function createReactionHandler(
             } catch { /* ignore Discord edit errors during streaming */ }
           };
 
+          // Stream stall warning state.
+          let lastEventAt = Date.now();
+          let activeToolCount = 0;
+          let stallWarned = false;
+
           const keepalive = setInterval(() => {
+            // Stall warning: append to deltaText when events stop arriving.
+            if (params.streamStallWarningMs > 0) {
+              const stallElapsed = Date.now() - lastEventAt;
+              if (stallElapsed > params.streamStallWarningMs && activeToolCount === 0 && !stallWarned) {
+                stallWarned = true;
+                deltaText += (deltaText ? '\n' : '') + `\n*Stream may be stalled (${Math.round(stallElapsed / 1000)}s no activity)...*`;
+              }
+            }
             // eslint-disable-next-line @typescript-eslint/no-floating-promises
             maybeEdit(true);
           }, 5000);
@@ -363,6 +376,12 @@ function createReactionHandler(
               timeoutMs: params.runtimeTimeoutMs,
               images: inputImages,
             })) {
+              // Track event flow for stall warning.
+              lastEventAt = Date.now();
+              stallWarned = false;
+              if (evt.type === 'tool_start') activeToolCount++;
+              else if (evt.type === 'tool_end') activeToolCount = Math.max(0, activeToolCount - 1);
+
               if (evt.type === 'text_final') {
                 finalText = evt.text;
                 await maybeEdit(true);

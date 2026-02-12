@@ -70,7 +70,7 @@ Discoclaw supports a shareable markdown plan format for passing integrations bet
 
 - Spec: `docs/discoclaw-plan-spec.md`
 - Template: `templates/plans/integration.discoclaw-plan.md`
-- Example files: `plans/*.discoclaw-plan.md`
+- Example files: `plans/examples/*.discoclaw-plan.md`
 - Skills:
   - `skills/discoclaw-plan-generator/SKILL.md`
   - `skills/discoclaw-plan-consumer/SKILL.md`

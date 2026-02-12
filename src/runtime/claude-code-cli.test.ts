@@ -921,6 +921,50 @@ describe('one-shot stream stall timer', () => {
     expect(events.some((e) => e.type === 'error' && e.message.includes('stream stall'))).toBe(false);
   });
 
+  it('emits only one error+done when stall timer fires and process rejects', async () => {
+    // When the stall timer fires it pushes error+done and kills the process.
+    // If the kill causes the process promise to reject (as real execa does),
+    // the .catch() handler must not push a second error+done pair.
+    const stdout = new PassThrough();
+    const stderr = new PassThrough();
+    let rejectProcess: (err: any) => void;
+    const processPromise: any = new Promise((_r, rej) => { rejectProcess = rej; });
+    processPromise.stdout = stdout;
+    processPromise.stderr = stderr;
+    processPromise.stdin = 'ignore';
+    processPromise.kill = vi.fn(() => {
+      stdout.end();
+      stderr.end();
+      rejectProcess!(Object.assign(new Error('killed'), { killed: true, failed: true }));
+    });
+    processPromise.then = processPromise.then.bind(processPromise);
+    processPromise.catch = processPromise.catch.bind(processPromise);
+
+    const execaMock = execa as any;
+    execaMock.mockImplementation(() => processPromise);
+
+    const rt = createClaudeCliRuntime({
+      claudeBin: 'claude',
+      dangerouslySkipPermissions: false,
+      outputFormat: 'text',
+      streamStallTimeoutMs: 5000,
+    });
+
+    const events: any[] = [];
+    const drainPromise = (async () => {
+      for await (const evt of rt.invoke({ prompt: 'p', model: 'opus', cwd: '/tmp' })) events.push(evt);
+    })();
+
+    await vi.advanceTimersByTimeAsync(6000);
+    await drainPromise;
+
+    const errors = events.filter((e) => e.type === 'error');
+    const dones = events.filter((e) => e.type === 'done');
+    expect(errors).toHaveLength(1);
+    expect(dones).toHaveLength(1);
+    expect(errors[0].message).toContain('stream stall');
+  });
+
   it('works with stream-json output format', async () => {
     const { proc } = makeControllableProcess();
     const execaMock = execa as any;
