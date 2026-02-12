@@ -42,7 +42,7 @@ Preflight:
 - Confirm `.env` has `DISCORD_TOKEN` and a non-empty `DISCORD_ALLOW_USER_IDS` (fail-closed otherwise).
 - If running in a server/guild, set `DISCORD_CHANNEL_IDS` to the minimum set of channels.
 - Confirm `DISCORD_REQUIRE_CHANNEL_CONTEXT=1` and `DISCORD_AUTO_INDEX_CHANNEL_CONTEXT=1`.
-- Run `pnpm sync:discord-context` to ensure base + channel context stubs exist.
+- Run `pnpm sync:discord-context` to ensure channel context stubs exist and strip stale Includes blocks.
 - *(Optional)* If browser automation is desired, confirm `agent-browser` is installed and on `PATH`.
 
 Deploy:
@@ -53,7 +53,7 @@ Deploy:
 
 Validation:
 - DM the bot (should respond only if allowlisted).
-- Post in an allowlisted channel (should respond, and should read `content/discord/...` context).
+- Post in an allowlisted channel (should respond, and should read PA modules + channel context).
 - Post in a non-allowlisted channel (should not respond).
 - Create a new channel and post once (should auto-index + create a stub context file).
 - If `DISCOCLAW_STATUS_CHANNEL` is set, confirm a green "Bot Online" embed appears on startup and a gray "Bot Offline" embed on shutdown.

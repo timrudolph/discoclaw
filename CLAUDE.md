@@ -19,6 +19,7 @@ Never auto-load all `.context/` modules. Read only what the task requires.
 | Task area | Module |
 |-----------|--------|
 | PA behavior / Discord formatting / memory | `.context/pa.md` |
+| PA safety / injection defense | `.context/pa-safety.md` |
 | Discord behavior / routing | `.context/discord.md` |
 | Runtime adapters / CLI flags | `.context/runtime.md` |
 | Dev workflow / env / build | `.context/dev.md` |

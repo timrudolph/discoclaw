@@ -57,6 +57,17 @@ Example: `{ "tier": "standard", "note": "Never modify files outside workspace." 
 The optional `note` field is injected into the prompt as a soft behavioral constraint.
 Custom tier example: `{ "tier": "custom", "tools": ["Read", "Edit", "Bash"] }`
 
+## Streaming & Reply Pacing (Discord)
+
+Key settings for block streaming:
+- `blockStreaming: true` — chunks output so user sees progress instead of silence then wall of text
+- `blockStreamingCoalesce: {minChars:100, maxChars:600, idleMs:800}` — merges tiny fragments; 800ms idle = natural paragraph breaks
+- `blockStreamingBreak: text_end` — flushes after each text block (between paragraphs, before/after tool calls)
+- `toolStatusUpdates: true` — shows "Running tool..." during tool calls
+- `reasoningStreaming: false` — reasoning tokens stay hidden for casual use
+
+Tuning: too chattery? increase `minChars` or `idleMs`. Too slow? decrease `maxChars` or `idleMs`.
+
 ## Stream Stall Detection
 
 Two-layer protection against hung Claude Code processes:
@@ -91,7 +102,7 @@ Both require `CLAUDE_OUTPUT_FORMAT=stream-json` for structured events.
 
 **Budget semantics:** For multi-turn sessions, budget accumulates across turns and cannot be reset mid-session. Recommend $5-10 for multi-turn.
 
-**Append system prompt:** When set, workspace PA files (SOUL.md, IDENTITY.md, USER.md, TOOLS.md) are skipped from the context file list (their content is already in the system prompt). Base context files (core.md, discord.md, safety.md etc.) and channel-specific context are unaffected. **Note:** Do not set this on first run before `workspace/BOOTSTRAP.md` has been consumed — the skip logic also bypasses BOOTSTRAP.md loading.
+**Append system prompt:** When set, workspace PA files (SOUL.md, IDENTITY.md, USER.md, TOOLS.md) are skipped from the context file list (their content is already in the system prompt). PA context modules (`.context/pa.md`, `.context/pa-safety.md`) and channel-specific context are unaffected. **Note:** Do not set this on first run before `workspace/BOOTSTRAP.md` has been consumed — the skip logic also bypasses BOOTSTRAP.md loading.
 
 - **Session scanner** (`src/runtime/session-scanner.ts`): watches `~/.claude/projects/<escaped-cwd>/<session-id>.jsonl`, skips pre-existing content, degrades gracefully if the file never appears.
 - **Tool-aware queue** (`src/discord/tool-aware-queue.ts`): state machine that suppresses narration text before tools, shows human-readable activity labels (from `src/runtime/tool-labels.ts`), and streams the final answer after all tool use completes.

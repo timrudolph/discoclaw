@@ -9,7 +9,7 @@ DiscoClaw is a minimal Discord bridge that routes messages to AI runtimes
 Discord message
   → allowlist gate (DISCORD_ALLOW_USER_IDS)
   → session lookup/create (keyed by user+channel)
-  → context assembly (PA files + base context + channel context + durable memory)
+  → context assembly (PA files + PA modules + channel context + durable memory)
   → runtime adapter invocation (streaming)
   → streaming response → Discord message edits (chunked, code-block-aware)
   → optional: parse & execute discord actions from response
@@ -27,17 +27,16 @@ Discord message
 | `src/cron/` | Cron scheduler, executor, forum sync, run stats |
 | `src/observability/` | Metrics registry |
 | `src/sessions.ts` | Session manager (maps session keys to runtime session IDs) |
-| `content/discord/base/` | Base context files loaded for every message |
 | `content/discord/channels/` | Per-channel context files |
 | `workspace/` | Identity files (SOUL.md, IDENTITY.md, USER.md) — gitignored |
 | `.context/` | Developer context modules (you are here) |
 
 ## Key Concepts
 
-- **Channel context** — per-channel `.md` files injected into the prompt. Base files
+- **Channel context** — per-channel `.md` files injected into the prompt. PA modules
   apply to all channels; channel-specific files add overrides.
-- **Base context** — `content/discord/base/*.md` files (core, safety, autonomy, etc.)
-  loaded alphabetically for every invocation.
+- **PA context modules** — `.context/pa.md` and `.context/pa-safety.md`, loaded for
+  every invocation. Fail-closed: missing modules crash the bot at startup.
 - **Session keys** — `user:channel` composites that map to runtime sessions, giving
   each user+channel pair its own conversation continuity.
 - **Runtime adapters** — pluggable interface (`src/runtime/types.ts`) that wraps an AI

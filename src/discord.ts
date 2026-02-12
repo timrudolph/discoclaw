@@ -428,7 +428,10 @@ export function createMessageCreateHandler(params: Omit<BotParams, 'token'>, que
             }),
           ]);
 
-          const inlinedContext = await inlineContextFiles(contextFiles);
+          const inlinedContext = await inlineContextFiles(
+            contextFiles,
+            { required: new Set(params.discordChannelContext?.paContextFiles ?? []) },
+          );
 
           let prompt =
             (inlinedContext

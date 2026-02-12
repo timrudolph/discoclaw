@@ -62,7 +62,7 @@ Run `pnpm setup` for guided configuration, or copy `.env.example` -> `.env` for 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `DISCOCLAW_DATA_DIR` | *(empty)* | Optional data root; sets default `WORKSPACE_CWD` to `$DISCOCLAW_DATA_DIR/workspace` |
-| `DISCOCLAW_CONTENT_DIR` | *(empty)* | Channel-context content dir; defaults to `$DISCOCLAW_DATA_DIR/content` |
+| `DISCOCLAW_CONTENT_DIR` | *(empty)* | Channel-context content dir (per-channel files only; PA modules always load from `.context/` in repo root); defaults to `$DISCOCLAW_DATA_DIR/content` |
 | `WORKSPACE_CWD` | `./workspace` | Runtime working directory (overrides the data-dir default) |
 | `GROUPS_DIR` | `./groups` | Base directory for per-session working dirs |
 | `USE_GROUP_DIR_CWD` | `0` | Enable nanoclaw-style group CWD per session |

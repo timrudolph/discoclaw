@@ -3,8 +3,12 @@ import 'dotenv/config';
 import path from 'node:path';
 import process from 'node:process';
 import fs from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
 
 import { ensureIndexedDiscordChannelContext, loadDiscordChannelContext } from '../src/discord/channel-context.js';
+
+const __filename_sync = fileURLToPath(import.meta.url);
+const __dirname_sync = path.dirname(__filename_sync);
 
 function getArgValue(flag: string): string | null {
   const idx = process.argv.indexOf(flag);
@@ -61,7 +65,8 @@ async function main() {
     error: (obj: unknown, msg?: string) => console.error(msg ?? '', obj ?? ''),
   };
 
-  const ctx = await loadDiscordChannelContext({ contentDir, log });
+  const contextModulesDir = path.join(__dirname_sync, '..', '.context');
+  const ctx = await loadDiscordChannelContext({ contentDir, contextModulesDir, log });
 
   const adds = parseAddChannelArgs(process.argv);
   for (const a of adds) {
@@ -78,13 +83,32 @@ async function main() {
     log.info({ indexPath: ctx.indexPath }, 'rewrite-index: done');
   }
 
+  // Strip stale "Includes" blocks from channel files.
+  const channelsDir = ctx.channelsDir;
+  try {
+    const channelFiles = await fs.readdir(channelsDir);
+    for (const f of channelFiles) {
+      if (!f.endsWith('.md')) continue;
+      const p = path.join(channelsDir, f);
+      const body = await fs.readFile(p, 'utf8');
+      // Match "Includes (read these first):" followed by lines starting with "- ../base/"
+      const cleaned = body.replace(/\nIncludes \(read these first\):\n(?:- \.\.\/base\/\S+\n)+\n?/g, '\n');
+      if (cleaned !== body) {
+        await fs.writeFile(p, cleaned, 'utf8');
+        log.info({ file: f }, 'sync: stripped stale Includes block');
+      }
+    }
+  } catch (err) {
+    log.warn({ err }, 'sync: failed to clean stale Includes blocks');
+  }
+
   log.info(
     {
       contentDir,
       indexPath: ctx.indexPath,
       channelsDir: ctx.channelsDir,
       channelsCount: ctx.byChannelId.size,
-      createdBase: [ctx.baseCorePath, ctx.baseSafetyPath],
+      createdBase: ctx.paContextFiles,
     },
     'sync: done',
   );

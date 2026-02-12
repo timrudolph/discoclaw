@@ -202,7 +202,10 @@ function createReactionHandler(
             channelLabel = `#${channelCtx.channelName ?? 'unknown'}`;
           }
 
-          const inlinedContext = await inlineContextFiles(contextFiles);
+          const inlinedContext = await inlineContextFiles(
+            contextFiles,
+            { required: new Set(params.discordChannelContext?.paContextFiles ?? []) },
+          );
 
           let prompt =
             (inlinedContext

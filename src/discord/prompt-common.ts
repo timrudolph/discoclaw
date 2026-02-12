@@ -52,7 +52,7 @@ export function buildContextFiles(
 ): string[] {
   const contextFiles: string[] = [...paFiles];
   if (discordChannelContext) {
-    contextFiles.push(...discordChannelContext.baseFiles);
+    contextFiles.push(...discordChannelContext.paContextFiles);
   }
   if (channelContextPath) contextFiles.push(channelContextPath);
   return contextFiles;
@@ -60,9 +60,13 @@ export function buildContextFiles(
 
 /**
  * Read all context files and return their contents inlined into a single string.
- * Falls back gracefully if any file can't be read.
+ * Falls back gracefully if any file can't be read, unless the file is in the
+ * `required` set — required files throw on read failure.
  */
-export async function inlineContextFiles(filePaths: string[]): Promise<string> {
+export async function inlineContextFiles(
+  filePaths: string[],
+  opts?: { required?: Set<string> },
+): Promise<string> {
   if (filePaths.length === 0) return '';
   const sections: string[] = [];
   for (const filePath of filePaths) {
@@ -70,8 +74,11 @@ export async function inlineContextFiles(filePaths: string[]): Promise<string> {
       const content = await fs.readFile(filePath, 'utf-8');
       const name = path.basename(filePath);
       sections.push(`--- ${name} ---\n${content.trimEnd()}`);
-    } catch {
-      // Skip files that can't be read (missing, permission error, etc.)
+    } catch (err) {
+      if (opts?.required?.has(filePath)) {
+        throw new Error(`Required context file unreadable: ${filePath}`);
+      }
+      // Non-required files (channel context, memory) still skip gracefully.
     }
   }
   return sections.join('\n\n');

@@ -53,7 +53,7 @@ Legend: **done** | *stub* | ~~cut~~
 | Component | File(s) | Status |
 |-----------|---------|--------|
 | Per-channel context files | `src/discord/channel-context.ts` | **done** |
-| Base context (core + safety) | `content/discord/base/` | **done** |
+| PA context modules (pa + safety) | `.context/pa.md`, `.context/pa-safety.md` | **done** |
 | Auto-scaffold on first message | `src/discord/channel-context.ts` | **done** |
 | Thread inherits parent channel context | `src/discord/channel-context.ts` | **done** |
 | DM context | `content/discord/channels/dm.md` | **done** |

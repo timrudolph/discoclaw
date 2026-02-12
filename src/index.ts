@@ -8,7 +8,7 @@ import fs from 'node:fs/promises';
 import { createClaudeCliRuntime, killActiveSubprocesses } from './runtime/claude-code-cli.js';
 import { withConcurrencyLimit } from './runtime/concurrency-limit.js';
 import { SessionManager } from './sessions.js';
-import { loadDiscordChannelContext } from './discord/channel-context.js';
+import { loadDiscordChannelContext, validatePaContextModules } from './discord/channel-context.js';
 import { startDiscordBot } from './discord.js';
 import type { StatusPoster } from './discord/status-channel.js';
 import { acquirePidLock, releasePidLock } from './pidlock.js';
@@ -106,11 +106,17 @@ const contentDir = cfg.contentDirOverride || (dataDir
   ? path.join(dataDir, 'content')
   : path.join(__dirname, '..', 'content'));
 
+const contextModulesDir = path.join(__dirname, '..', '.context');
+
+// Hard requirement: PA context modules must exist.
+// This runs outside the try-catch — failure crashes the process.
+await validatePaContextModules(contextModulesDir);
+
 // Best-effort: load only the channel index (small) and ensure placeholder channel files exist.
 let discordChannelContext = undefined as Awaited<ReturnType<typeof loadDiscordChannelContext>> | undefined;
 try {
   await fs.mkdir(contentDir, { recursive: true });
-  discordChannelContext = await loadDiscordChannelContext({ contentDir, log });
+  discordChannelContext = await loadDiscordChannelContext({ contentDir, contextModulesDir, log });
 } catch (err) {
   log.warn({ err, contentDir }, 'Failed to initialize discord channel context; continuing without it');
   discordChannelContext = undefined;

@@ -3,8 +3,12 @@ import 'dotenv/config';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
+import { fileURLToPath } from 'node:url';
 
 import { ensureIndexedDiscordChannelContext, loadDiscordChannelContext } from '../src/discord/channel-context.js';
+
+const __filename_migrate = fileURLToPath(import.meta.url);
+const __dirname_migrate = path.dirname(__filename_migrate);
 
 function hasFlag(flag: string): boolean {
   return process.argv.includes(flag);
@@ -109,7 +113,8 @@ async function main() {
     process.exit(2);
   }
 
-  const ctx = await loadDiscordChannelContext({ contentDir, log });
+  const contextModulesDir = path.join(__dirname_migrate, '..', '.context');
+  const ctx = await loadDiscordChannelContext({ contentDir, contextModulesDir, log });
 
   // Keep a copy of the legacy index for reference.
   await copyFile({

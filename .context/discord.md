@@ -5,8 +5,13 @@
 - Fail closed: if the allowlist is empty, DiscoClaw responds to nobody.
 - Optional: `DISCORD_CHANNEL_IDS` restricts the bot to specific guild channels (DMs are still allowed).
 
+## Base PA Context
+
+Base PA behavioral and safety context is loaded from `.context/pa.md` and `.context/pa-safety.md`
+in the repo root. These are required — the bot refuses to start if either is missing.
+
 ## Channel Context (Token-Efficient)
-DiscoClaw can link a per-channel context file into the runtime prompt (instead of inlining it) to keep initial context small.
+DiscoClaw inlines per-channel context files into the runtime prompt.
 
 Layout (under `$DISCOCLAW_CONTENT_DIR` or `$DISCOCLAW_DATA_DIR/content`):
 - `discord/DISCORD.md` (index: channel -> id -> context file)
@@ -139,6 +144,10 @@ Bead actions (requires `DISCOCLAW_DISCORD_ACTIONS=1` and `DISCOCLAW_DISCORD_ACTI
 Data import: point `DISCOCLAW_BEADS_CWD` at an existing beads workspace (e.g., `~/Dropbox/weston`). Existing beads and their `external_ref` fields (thread IDs) work as-is since both bots share the same Discord guild.
 
 Implementation: `src/beads/`, `src/discord/actions-beads.ts`, `scripts/beads/`
+
+## Discord API Quirks
+
+**Thread name + archive in one call:** When updating a thread's name AND archiving it in a single PATCH request, the name updates but the archive flag doesn't stick. Do them as separate API calls with a short delay between.
 
 ## Group CWD Mode
 If `USE_GROUP_DIR_CWD=1`:

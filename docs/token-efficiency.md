@@ -16,7 +16,7 @@ The main path — every Discord message from an allowed user.
    - `BOOTSTRAP.md` (first run only, loaded when present — `prompt-common.ts:12`)
    - `SOUL.md`, `IDENTITY.md`, `USER.md`, `TOOLS.md` (via `loadWorkspacePaFiles()`)
    - DM-only: `MEMORY.md` + daily logs for today/yesterday (inserted before base context)
-   - Base context files from `content/discord/base/` (alphabetical)
+   - PA context modules from `.context/` (`pa.md`, `pa-safety.md`)
    - Channel-specific context file
 2. **Durable memory section** (inline, not file reference)
 3. **Rolling summary section** (inline)
@@ -29,7 +29,7 @@ The main path — every Discord message from an allowed user.
 
 Triggered when an allowed user reacts to a message.
 
-1. **Context file list** (PA files + base + channel context — same as messages, but no DM memory files)
+1. **Context file list** (PA files + PA modules + channel context — same as messages, but no DM memory files)
 2. **Durable memory section** (inline)
 3. **Reaction event metadata** (who reacted, emoji, original message truncated to 1500 chars)
 
@@ -56,7 +56,7 @@ Ordered from largest to smallest typical contribution. No hard token numbers —
 | Layer | Relative Size | Varies Per-Request | Config Env Var |
 |-------|--------------|-------------------|----------------|
 | Workspace PA files (SOUL, IDENTITY, USER, TOOLS) | **Large** | No (stable) | `WORKSPACE_CWD` |
-| Base context files | **Large** | No (stable) | `DISCOCLAW_CONTENT_DIR` |
+| PA context modules (pa.md, pa-safety.md) | **Medium** | No (stable) | `.context/` in repo root |
 | Message history | **Medium** | Yes (every message) | `DISCOCLAW_MESSAGE_HISTORY_BUDGET` (default: 3000 chars) |
 | Durable memory | **Medium** | Yes (on `!memory` changes) | `DISCOCLAW_DURABLE_INJECT_MAX_CHARS` (default: 2000 chars) |
 | Rolling summary | **Medium** | Yes (every N turns) | `DISCOCLAW_SUMMARY_MAX_CHARS` (default: 2000 chars) |
@@ -72,11 +72,11 @@ Ordered from largest to smallest typical contribution. No hard token numbers —
 
 Anthropic's automatic prompt caching can reuse prompt prefixes that don't change between requests. The Claude CLI runtime does not expose cache-hit telemetry or explicit cache control blocks, so cache behavior cannot be directly measured in this system. This section describes how to structure prompts for cache-friendliness.
 
-**Stable prefix first.** The context file list (PA files → base context → channel context) forms the prompt prefix. When this list doesn't change between requests, automatic caching can reuse it.
+**Stable prefix first.** The context file list (PA files → PA modules → channel context) forms the prompt prefix. When this list doesn't change between requests, automatic caching can reuse it.
 
 **Dynamic content after stable content.** Durable memory, summaries, history, and the user message come after the file list. This ordering is already cache-friendly.
 
-**Edits to base files break the prefix.** Modifying any file in `content/discord/base/` or workspace identity files changes what Claude reads, shifting the effective prefix. Batch edits rather than making frequent small changes.
+**Edits to PA modules break the prefix.** Modifying `.context/pa.md`, `.context/pa-safety.md`, or workspace identity files changes what Claude reads, shifting the effective prefix. Batch edits rather than making frequent small changes.
 
 **Per-channel isolation.** Each channel loads a different channel context file, creating separate cache buckets. More active channels benefit more from caching; cross-channel reuse is limited.
 
@@ -94,7 +94,7 @@ Anthropic's automatic prompt caching can reuse prompt prefixes that don't change
 
 ### Permanent per-request cost increases
 
-- Adding new base context files to `content/discord/base/`
+- Growing PA context modules (`.context/pa.md`, `.context/pa-safety.md`)
 - Growing workspace files (SOUL.md, IDENTITY.md, USER.md, TOOLS.md)
 - Growing channel context files
 - Growing `workspace/AGENTS.md` (loaded by Claude Code on every invocation)
@@ -109,7 +109,7 @@ Anthropic's automatic prompt caching can reuse prompt prefixes that don't change
 
 ### Cache-breaking changes
 
-- Editing files in `content/discord/base/` (affects all channels)
+- Editing PA context modules in `.context/` (affects all channels)
 - Adding/removing workspace identity files (changes the file list prefix)
 - Reordering files in `loadWorkspacePaFiles()` or `buildContextFiles()` in `src/discord/prompt-common.ts`
 - Daily log rotation in DMs (new filename = new file list = new prefix)
@@ -129,8 +129,8 @@ Anthropic's automatic prompt caching can reuse prompt prefixes that don't change
 ### For developers
 
 - Audit context files periodically for stale content.
-- Use per-channel context only for channel-specific rules, not general rules that belong in base context.
-- Keep base context files stable — batch edits rather than frequent small changes.
+- Use per-channel context only for channel-specific rules, not general rules that belong in PA modules.
+- Keep PA context modules stable — batch edits rather than frequent small changes.
 - Background tasks (summaries, auto-tagging, frequent crons) default to Haiku — don't override to Opus without reason.
 - Tune `DISCOCLAW_SUMMARY_EVERY_N_TURNS` based on conversation volume.
 - Consider `DISCOCLAW_MESSAGE_HISTORY_BUDGET` tuning — lower for terse channels, higher for context-heavy ones.
