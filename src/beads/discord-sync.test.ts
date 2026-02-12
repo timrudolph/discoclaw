@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import { describe, expect, it, vi } from 'vitest';
-import { buildThreadName, buildBeadStarterContent, getThreadIdFromBead, updateBeadStarterMessage, closeBeadThread, isBeadThreadAlreadyClosed, reloadTagMapInPlace, getStatusTagIds, buildAppliedTagsWithStatus, updateBeadThreadTags } from './discord-sync.js';
+import { buildThreadName, buildBeadStarterContent, getThreadIdFromBead, updateBeadStarterMessage, closeBeadThread, isBeadThreadAlreadyClosed, reloadTagMapInPlace, getStatusTagIds, buildAppliedTagsWithStatus, updateBeadThreadTags, createBeadThread } from './discord-sync.js';
 import type { BeadData, TagMap } from './types.js';
 
 // ---------------------------------------------------------------------------
@@ -458,6 +458,83 @@ describe('buildAppliedTagsWithStatus', () => {
     const tagMap: TagMap = { open: 's1', feature: 'c1' };
     const result = buildAppliedTagsWithStatus(['c1', 'c1', 'c1'], 'open', tagMap);
     expect(result.filter(id => id === 'c1').length).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// createBeadThread — status tag application
+// ---------------------------------------------------------------------------
+
+describe('createBeadThread', () => {
+  const makeBead = (overrides?: Partial<BeadData>): BeadData => ({
+    id: 'ws-001',
+    title: 'Test bead',
+    description: 'A test',
+    status: 'open',
+    priority: 2,
+    issue_type: 'task',
+    owner: '',
+    external_ref: '',
+    labels: ['feature'],
+    comments: [],
+    created_at: '',
+    updated_at: '',
+    close_reason: '',
+    ...overrides,
+  });
+
+  function makeForum(createFn: ReturnType<typeof vi.fn>): any {
+    return { threads: { create: createFn } };
+  }
+
+  it('includes status tag in appliedTags when tagMap has status entry', async () => {
+    const tagMap: TagMap = { open: 's1', feature: 'c1' };
+    const bead = makeBead({ status: 'open', labels: ['feature'] });
+    const createFn = vi.fn(async (_opts: any) => ({ id: 'new-thread' }));
+
+    await createBeadThread(makeForum(createFn), bead, tagMap);
+
+    const args = createFn.mock.calls[0]![0];
+    expect(args.appliedTags).toContain('s1');
+    expect(args.appliedTags).toContain('c1');
+    expect(args.appliedTags.length).toBeLessThanOrEqual(5);
+  });
+
+  it('omits status tag when tagMap has no status entry for bead status', async () => {
+    const tagMap: TagMap = { feature: 'c1' };
+    const bead = makeBead({ status: 'open', labels: ['feature'] });
+    const createFn = vi.fn(async (_opts: any) => ({ id: 'new-thread' }));
+
+    await createBeadThread(makeForum(createFn), bead, tagMap);
+
+    const args = createFn.mock.calls[0]![0];
+    expect(args.appliedTags).toContain('c1');
+    expect(args.appliedTags).not.toContain(undefined);
+    expect(args.appliedTags.length).toBeLessThanOrEqual(5);
+  });
+
+  it('caps total appliedTags at 5 even with many labels', async () => {
+    const tagMap: TagMap = { open: 's1', a: 'c1', b: 'c2', c: 'c3', d: 'c4', e: 'c5' };
+    const bead = makeBead({ status: 'open', labels: ['a', 'b', 'c', 'd', 'e'] });
+    const createFn = vi.fn(async (_opts: any) => ({ id: 'new-thread' }));
+
+    await createBeadThread(makeForum(createFn), bead, tagMap);
+
+    const args = createFn.mock.calls[0]![0];
+    expect(args.appliedTags.length).toBe(5);
+    expect(args.appliedTags).toContain('s1');
+  });
+
+  it('passes mentionUserId to starter content and allowedMentions', async () => {
+    const tagMap: TagMap = { open: 's1' };
+    const bead = makeBead({ status: 'open', labels: [] });
+    const createFn = vi.fn(async (_opts: any) => ({ id: 'new-thread' }));
+
+    await createBeadThread(makeForum(createFn), bead, tagMap, '999');
+
+    const args = createFn.mock.calls[0]![0];
+    expect(args.message.content).toContain('<@999>');
+    expect(args.message.allowedMentions.users).toEqual(['999']);
   });
 });
 

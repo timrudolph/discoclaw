@@ -7,6 +7,9 @@ import type { TagMap, BeadData, BeadStatus, BeadSyncResult } from '../beads/type
 import type { BeadSyncCoordinator } from '../beads/bead-sync-coordinator.js';
 import type { ForumCountSync } from './forum-count-sync.js';
 import { BEAD_STATUSES, isBeadStatus } from '../beads/types.js';
+
+/** Pre-computed set for filtering status names from tag candidates. */
+const STATUS_NAME_SET = new Set<string>(BEAD_STATUSES);
 import { bdShow, bdList, bdCreate, bdUpdate, bdClose, bdAddLabel } from '../beads/bd-cli.js';
 import {
   resolveBeadsForum,
@@ -94,8 +97,7 @@ export async function executeBeadAction(
       );
 
       // Auto-tag if enabled and we have available tags (excluding status tags).
-      const statusSet = new Set<string>(BEAD_STATUSES);
-      const tagNames = Object.keys(beadCtx.tagMap).filter(k => !statusSet.has(k));
+      const tagNames = Object.keys(beadCtx.tagMap).filter(k => !STATUS_NAME_SET.has(k));
       if (beadCtx.autoTag && tagNames.length > 0) {
         try {
           const suggestedTags = await autoTagBead(
