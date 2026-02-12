@@ -32,7 +32,6 @@ Rules:
 - bug: broken behavior, fixes, regressions
 - ops: operations, monitoring, audits, cron jobs, health checks
 - infra: infrastructure, Docker, services, networking, servers
-- token-cost: token usage, cost optimization, billing, API spend
 - personal: personal life tasks (non-technical)
 If the task is clearly personal/life stuff, use ONLY the personal tag.
 
