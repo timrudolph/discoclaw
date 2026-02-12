@@ -2,11 +2,14 @@ import type { ImageData } from '../runtime/types.js';
 import { MAX_IMAGES_PER_INVOCATION } from '../runtime/types.js';
 import { downloadMessageImages, resolveMediaType } from './image-download.js';
 import type { AttachmentLike } from './image-download.js';
+import { downloadTextAttachments } from './file-download.js';
 import type { LoggerLike } from './action-types.js';
 
 export type ReplyReferenceResult = {
   section: string;
   images: ImageData[];
+  /** Text file contents downloaded from the referenced message's attachments. */
+  files: Array<{ name: string; content: string }>;
 };
 
 /** Minimal shape for a Discord message with optional reference. */
@@ -21,10 +24,14 @@ export type MessageWithReference = {
 
 /** Shape of the fetched referenced message. */
 export type ReferencedMessage = {
-  author: { bot?: boolean; displayName?: string; username: string };
+  author: { id?: string; bot?: boolean; displayName?: string; username: string };
   content?: string | null;
   attachments?: Map<string, AttachmentLike> | { values(): Iterable<AttachmentLike>; size: number };
+  embeds?: Array<{ title?: string | null; url?: string | null }>;
 };
+
+/** Max chars of referenced message content to include in the prompt. */
+const CONTENT_BUDGET = 1500;
 
 /**
  * Resolve a Discord reply reference into a prompt section and any image attachments.
@@ -45,15 +52,19 @@ export async function resolveReplyReference(
   try {
     const refMsg = await msg.channel.messages.fetch(refId);
 
-    // Author name
+    // Author info
     const author = refMsg.author.bot
       ? (botDisplayName ?? 'Discoclaw')
       : (refMsg.author.displayName || refMsg.author.username);
+    const authorId = String(refMsg.author.id ?? 'unknown');
 
-    const content = String(refMsg.content ?? '');
+    let content = String(refMsg.content ?? '');
+    if (content.length > CONTENT_BUDGET) {
+      content = content.slice(0, CONTENT_BUDGET) + '…';
+    }
 
-    // Note non-image attachments inline
-    const attachmentNotes: string[] = [];
+    // Separate image vs non-image attachments
+    const nonImageAttachments: AttachmentLike[] = [];
     const imageAttachments: AttachmentLike[] = [];
 
     if (refMsg.attachments) {
@@ -65,8 +76,7 @@ export async function resolveReplyReference(
         if (resolveMediaType(att)) {
           imageAttachments.push(att);
         } else {
-          const name = att.name ?? 'unknown';
-          attachmentNotes.push(`[attachment: ${name}]`);
+          nonImageAttachments.push(att);
         }
       }
     }
@@ -88,13 +98,54 @@ export async function resolveReplyReference(
       }
     }
 
-    // Build section
-    let section = `[${author}]: ${content}`;
-    if (attachmentNotes.length > 0) {
-      section += '\n' + attachmentNotes.join('\n');
+    // Download text file attachments from the referenced message
+    let files: Array<{ name: string; content: string }> = [];
+    const attachmentNotes: string[] = [];
+    if (nonImageAttachments.length > 0) {
+      try {
+        const textResult = await downloadTextAttachments(nonImageAttachments);
+        files = textResult.texts;
+        if (textResult.errors.length > 0) {
+          for (const e of textResult.errors) attachmentNotes.push(e);
+          log?.warn({ errors: textResult.errors }, 'discord:reply-ref text download notes');
+        }
+      } catch (err) {
+        log?.warn({ err }, 'discord:reply-ref text download failed');
+        // Fall back to listing attachment names
+        for (const att of nonImageAttachments) {
+          attachmentNotes.push(`[attachment: ${att.name ?? 'unknown'}]`);
+        }
+      }
     }
 
-    return { section, images };
+    // Embeds (title + URL)
+    const embedInfos: string[] = [];
+    if (refMsg.embeds && refMsg.embeds.length > 0) {
+      for (const e of refMsg.embeds) {
+        const parts: string[] = [];
+        if (e.title) parts.push(e.title);
+        if (e.url) parts.push(e.url);
+        if (parts.length > 0) embedInfos.push(parts.join(' '));
+      }
+    }
+
+    // Build section
+    let section = `[${author} (ID: ${authorId})]: ${content}`;
+    if (files.length > 0) {
+      const fileSections = files.map(f => `[Attached file: ${f.name}]\n\`\`\`\n${f.content}\n\`\`\``);
+      section += '\n\n' + fileSections.join('\n\n');
+    }
+    if (attachmentNotes.length > 0) {
+      section += '\n' + attachmentNotes.join('; ');
+    }
+    if (images.length > 0) {
+      section += `\n(${images.length} image(s) from replied-to message included below)`;
+    }
+    if (embedInfos.length > 0) {
+      section += `\nEmbeds: ${embedInfos.join(', ')}`;
+    }
+
+    return { section, images, files };
   } catch (err) {
     log?.warn({ err, refId }, 'discord:reply-ref fetch failed');
     return null;
