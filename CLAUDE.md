@@ -47,6 +47,7 @@ exists, that's your first run — read it, follow it, then delete it.
 - Commit regularly — don't batch an entire session into one commit.
 - Keep the git tree clean. After every task, follow the dev workflow below.
 - **Never push directly to `main`.** Branch protection is enforced — all changes go through PRs.
+- **Don't auto-create PRs.** Only open a pull request when explicitly asked.
 
 ## Dev Workflow
 
