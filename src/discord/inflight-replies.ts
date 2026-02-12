@@ -1,5 +1,4 @@
 import fs from 'node:fs/promises';
-import path from 'node:path';
 import type { LoggerLike } from './action-types.js';
 import { NO_MENTIONS } from './allowed-mentions.js';
 
@@ -163,25 +162,23 @@ export async function cleanupOrphanedReplies(opts: {
 
   log?.info({ count: orphans.length }, 'inflight:cold-start cleaning up orphaned replies');
 
-  const cleanup = async () => {
-    for (const orphan of orphans) {
-      try {
-        const channel = await client.channels.fetch(orphan.channelId);
-        if (!channel || typeof (channel as any).messages?.fetch !== 'function') {
-          log?.warn({ channelId: orphan.channelId }, 'inflight:cold-start channel not fetchable');
-          continue;
-        }
-        const message = await (channel as any).messages.fetch(orphan.messageId);
-        await message.edit({ content: INTERRUPTED_COLD, allowedMentions: NO_MENTIONS });
-        log?.info({ channelId: orphan.channelId, messageId: orphan.messageId }, 'inflight:cold-start edited orphan');
-      } catch (err) {
-        log?.warn({ err, channelId: orphan.channelId, messageId: orphan.messageId }, 'inflight:cold-start orphan cleanup failed');
+  const editPromises = orphans.map(async (orphan) => {
+    try {
+      const channel = await client.channels.fetch(orphan.channelId);
+      if (!channel || typeof (channel as any).messages?.fetch !== 'function') {
+        log?.warn({ channelId: orphan.channelId }, 'inflight:cold-start channel not fetchable');
+        return;
       }
+      const message = await (channel as any).messages.fetch(orphan.messageId);
+      await message.edit({ content: INTERRUPTED_COLD, allowedMentions: NO_MENTIONS });
+      log?.info({ channelId: orphan.channelId, messageId: orphan.messageId }, 'inflight:cold-start edited orphan');
+    } catch (err) {
+      log?.warn({ err, channelId: orphan.channelId, messageId: orphan.messageId }, 'inflight:cold-start orphan cleanup failed');
     }
-  };
+  });
 
   await Promise.race([
-    cleanup(),
+    Promise.allSettled(editPromises),
     new Promise<void>((resolve) => setTimeout(resolve, timeoutMs)),
   ]);
 
@@ -193,7 +190,17 @@ export async function cleanupOrphanedReplies(opts: {
   }
 }
 
-// --- Persistence helpers (atomic write-tmp-rename) ---
+// --- Persistence helpers (serial queue + atomic write-tmp-rename) ---
+
+// Serial promise queue prevents read-modify-write races when multiple
+// handlers register/dispose concurrently (maxConcurrentInvocations > 1).
+let persistQueue: Promise<void> = Promise.resolve();
+
+function enqueuePersist(fn: () => Promise<void>): Promise<void> {
+  const next = persistQueue.then(fn, fn);
+  persistQueue = next.then(() => {}, () => {});
+  return next;
+}
 
 async function readPersistedEntries(): Promise<OrphanEntry[]> {
   if (!dataFilePath) return [];
@@ -214,35 +221,49 @@ async function writePersistedEntries(entries: OrphanEntry[]): Promise<void> {
   await fs.rename(tmpPath, dataFilePath);
 }
 
-async function persistAdd(entry: OrphanEntry): Promise<void> {
-  if (!dataFilePath) return;
-  const entries = await readPersistedEntries();
-  const key = `${entry.channelId}:${entry.messageId}`;
-  // Avoid duplicates.
-  if (!entries.some((e) => `${e.channelId}:${e.messageId}` === key)) {
-    entries.push(entry);
-  }
-  await writePersistedEntries(entries);
+function persistAdd(entry: OrphanEntry): Promise<void> {
+  return enqueuePersist(async () => {
+    if (!dataFilePath) return;
+    const entries = await readPersistedEntries();
+    const key = `${entry.channelId}:${entry.messageId}`;
+    // Avoid duplicates.
+    if (!entries.some((e) => `${e.channelId}:${e.messageId}` === key)) {
+      entries.push(entry);
+    }
+    await writePersistedEntries(entries);
+  });
 }
 
-async function persistRemove(entry: OrphanEntry): Promise<void> {
-  if (!dataFilePath) return;
-  const entries = await readPersistedEntries();
-  const key = `${entry.channelId}:${entry.messageId}`;
-  const filtered = entries.filter((e) => `${e.channelId}:${e.messageId}` !== key);
-  await writePersistedEntries(filtered);
+function persistRemove(entry: OrphanEntry): Promise<void> {
+  return enqueuePersist(async () => {
+    if (!dataFilePath) return;
+    const entries = await readPersistedEntries();
+    const key = `${entry.channelId}:${entry.messageId}`;
+    const filtered = entries.filter((e) => `${e.channelId}:${e.messageId}` !== key);
+    await writePersistedEntries(filtered);
+  });
 }
 
-async function persistClear(): Promise<void> {
-  if (!dataFilePath) return;
-  try {
-    await fs.unlink(dataFilePath);
-  } catch {
-    // File doesn't exist or inaccessible — fine.
-  }
+function persistClear(): Promise<void> {
+  return enqueuePersist(async () => {
+    if (!dataFilePath) return;
+    try {
+      await fs.unlink(dataFilePath);
+    } catch {
+      // File doesn't exist or inaccessible — fine.
+    }
+  });
 }
 
 // --- Test helpers ---
+
+/**
+ * Wait for all queued persistence operations to complete.
+ * Only for use in tests — avoids flaky setTimeout-based waits.
+ */
+export function _waitForPendingPersists(): Promise<void> {
+  return persistQueue;
+}
 
 /**
  * Reset module state. Only for use in tests.
@@ -251,4 +272,5 @@ export function _resetForTest(): void {
   registry.clear();
   shuttingDown = false;
   dataFilePath = null;
+  persistQueue = Promise.resolve();
 }

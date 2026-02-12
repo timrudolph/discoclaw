@@ -702,17 +702,19 @@ export function createMessageCreateHandler(params: Omit<BotParams, 'token'>, que
               }
             }
 
-            try {
-              await editThenSendChunks(reply, msg.channel, processedText, collectedImages);
-            } catch (editErr: any) {
-              // Thread archived by a beadClose action — the close summary was already
-              // posted inside closeBeadThread, so the only thing lost is Claude's
-              // conversational wrapper ("Done. Closing it out now.").  Swallow gracefully.
-              if (editErr?.code === 50083) {
-                params.log?.info({ sessionKey }, 'discord:reply skipped (thread archived by action)');
-                try { await reply.delete(); } catch { /* best-effort cleanup */ }
-              } else {
-                throw editErr;
+            if (!isShuttingDown()) {
+              try {
+                await editThenSendChunks(reply, msg.channel, processedText, collectedImages);
+              } catch (editErr: any) {
+                // Thread archived by a beadClose action — the close summary was already
+                // posted inside closeBeadThread, so the only thing lost is Claude's
+                // conversational wrapper ("Done. Closing it out now.").  Swallow gracefully.
+                if (editErr?.code === 50083) {
+                  params.log?.info({ sessionKey }, 'discord:reply skipped (thread archived by action)');
+                  try { await reply.delete(); } catch { /* best-effort cleanup */ }
+                } else {
+                  throw editErr;
+                }
               }
             }
 
@@ -784,7 +786,7 @@ export function createMessageCreateHandler(params: Omit<BotParams, 'token'>, que
           // eslint-disable-next-line @typescript-eslint/no-floating-promises
           statusRef?.current?.handlerError({ sessionKey }, err);
           try {
-            if (reply) {
+            if (reply && !isShuttingDown()) {
               await reply.edit({
                 content: mapRuntimeErrorToUserMessage(String(err)),
                 allowedMentions: NO_MENTIONS,

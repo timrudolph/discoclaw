@@ -428,13 +428,15 @@ function createReactionHandler(
             }
           }
 
-          try {
-            await editThenSendChunks(reply!, (msg as any).channel, processedText, collectedImages);
-          } catch (editErr: any) {
-            if (editErr?.code === 50083) {
-              params.log?.info({ sessionKey }, `${logPrefix}:reply skipped (thread archived by action)`);
-            } else {
-              throw editErr;
+          if (!isShuttingDown()) {
+            try {
+              await editThenSendChunks(reply!, (msg as any).channel, processedText, collectedImages);
+            } catch (editErr: any) {
+              if (editErr?.code === 50083) {
+                params.log?.info({ sessionKey }, `${logPrefix}:reply skipped (thread archived by action)`);
+              } else {
+                throw editErr;
+              }
             }
           }
 
@@ -447,7 +449,7 @@ function createReactionHandler(
           // eslint-disable-next-line @typescript-eslint/no-floating-promises
           statusRef?.current?.handlerError({ sessionKey }, err);
           try {
-            if (reply) {
+            if (reply && !isShuttingDown()) {
               await reply.edit({
                 content: mapRuntimeErrorToUserMessage(String(err)),
                 allowedMentions: NO_MENTIONS,

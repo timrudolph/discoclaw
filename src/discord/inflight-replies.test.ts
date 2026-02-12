@@ -11,6 +11,7 @@ import {
   loadOrphanedReplies,
   cleanupOrphanedReplies,
   setDataFilePath,
+  _waitForPendingPersists,
   _resetForTest,
 } from './inflight-replies.js';
 
@@ -177,8 +178,7 @@ describe('persistent file', () => {
 
     const dispose = registerInFlightReply(mockReply(), 'ch1', 'msg1', 'test');
 
-    // Wait for async persist.
-    await new Promise((r) => setTimeout(r, 100));
+    await _waitForPendingPersists();
 
     const raw = await fs.readFile(filePath, 'utf-8');
     const entries = JSON.parse(raw);
@@ -186,7 +186,7 @@ describe('persistent file', () => {
     expect(entries[0]).toEqual({ channelId: 'ch1', messageId: 'msg1' });
 
     dispose();
-    await new Promise((r) => setTimeout(r, 100));
+    await _waitForPendingPersists();
 
     const raw2 = await fs.readFile(filePath, 'utf-8');
     const entries2 = JSON.parse(raw2);
@@ -198,7 +198,7 @@ describe('persistent file', () => {
     setDataFilePath(filePath);
 
     registerInFlightReply(mockReply(), 'ch1', 'msg1', 'test');
-    await new Promise((r) => setTimeout(r, 100));
+    await _waitForPendingPersists();
 
     // File should exist.
     const stat = await fs.stat(filePath).catch(() => null);
