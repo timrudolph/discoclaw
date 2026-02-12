@@ -55,14 +55,3 @@ describe('doctor: snowflake list validation', () => {
   });
 });
 
-describe('doctor: --check-connection flag parsing', () => {
-  it('flag is detected when present in argv', () => {
-    const argv = ['node', 'doctor.ts', '--check-connection'];
-    expect(argv.includes('--check-connection')).toBe(true);
-  });
-
-  it('flag is absent when not in argv', () => {
-    const argv = ['node', 'doctor.ts'];
-    expect(argv.includes('--check-connection')).toBe(false);
-  });
-});

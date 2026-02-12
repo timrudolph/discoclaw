@@ -23,7 +23,15 @@ export function validateDiscordToken(token: string): { valid: boolean; reason?: 
   return { valid: true };
 }
 
-/** Snowflake: 17-20 digit numeric string. */
+/**
+ * Snowflake: 17-20 digit numeric string.
+ *
+ * This is intentionally stricter than the runtime `isSnowflake()` in
+ * system-bootstrap.ts (which accepts 8+ digits for historical reasons).
+ * Real Discord snowflakes are always 17-20 digits. This stricter check
+ * is used in user-facing tools (doctor, setup wizard) to catch mistyped
+ * IDs early. Runtime code keeps the looser pattern for compatibility.
+ */
 export function validateSnowflake(id: string): boolean {
   return /^\d{17,20}$/.test(id);
 }

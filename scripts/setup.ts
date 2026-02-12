@@ -8,6 +8,7 @@
 
 import * as readline from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { validateDiscordToken, validateSnowflake, validateSnowflakes } from '../src/validate.js';
@@ -31,7 +32,15 @@ function cleanup() {
 process.on('SIGINT', cleanup);
 process.on('SIGTERM', cleanup);
 
+if (!input.isTTY) {
+  console.error('Setup requires an interactive terminal. Run: pnpm setup\n');
+  process.exit(1);
+}
+
 rl = readline.createInterface({ input, output });
+rl.on('close', () => {
+  if (!canceled) cleanup();
+});
 
 console.log(`
 Discoclaw Setup
@@ -54,7 +63,9 @@ if (fs.existsSync(envPath)) {
     console.log('  DISCORD_TOKEN = (not set)');
   }
   if (idsMatch?.[1]) {
-    console.log(`  DISCORD_ALLOW_USER_IDS = ${idsMatch[1].trim()}`);
+    const ids = idsMatch[1].trim().split(/[,\s]+/).filter(Boolean);
+    const masked = ids.map((id) => id.length > 6 ? `${id.slice(0, 3)}...${id.slice(-3)}` : '***');
+    console.log(`  DISCORD_ALLOW_USER_IDS = ${masked.join(', ')}`);
   } else {
     console.log('  DISCORD_ALLOW_USER_IDS = (not set)');
   }
@@ -164,7 +175,6 @@ console.log('\n.env written successfully.\n');
 
 // --- Run doctor ---
 console.log('Running pnpm doctor to validate...\n');
-const { execFileSync } = await import('node:child_process');
 try {
   execFileSync('pnpm', ['doctor'], { cwd: root, stdio: 'inherit' });
 } catch {

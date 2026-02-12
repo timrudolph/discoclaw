@@ -18,12 +18,12 @@ const root = path.resolve(import.meta.dirname, '..');
 let failures = 0;
 
 function ok(label: string) {
-  console.log(`  \u2713 ${label}`);
+  console.log(`  ✓ ${label}`);
 }
 
 function fail(label: string, hint?: string) {
-  console.log(`  \u2717 ${label}`);
-  if (hint) console.log(`    \u2192 ${hint}`);
+  console.log(`  ✗ ${label}`);
+  if (hint) console.log(`    → ${hint}`);
   failures++;
 }
 
@@ -101,7 +101,7 @@ if (claudePath) {
         );
       }
     } else {
-      console.log(`  \u2139 Could not parse Claude CLI version from "${claudeVersion}" (forward-compat: continuing)`);
+      console.log(`  ℹ Could not parse Claude CLI version from "${claudeVersion}" (forward-compat: continuing)`);
     }
   }
 } else {
@@ -114,7 +114,7 @@ const bdPath = which(bdBin);
 if (bdPath) {
   ok(`bd CLI: ${bdPath}`);
 } else {
-  console.log(`  \u2139 bd CLI not found (beads task tracking will be inactive until bd is installed)`);
+  console.log(`  ℹ bd CLI not found (beads task tracking will be inactive until bd is installed)`);
 }
 
 // 4. Pre-push hook (informational)
@@ -129,7 +129,7 @@ const prePushHook = path.join(hooksDir, 'pre-push');
 if (fs.existsSync(prePushHook)) {
   ok('pre-push hook installed');
 } else {
-  console.log('  \u2139 pre-push hook not installed (run: pnpm install)');
+  console.log('  ℹ pre-push hook not installed (run: pnpm install)');
 }
 
 // 5. workspace/PERMISSIONS.json (informational)
@@ -149,7 +149,7 @@ if (fs.existsSync(permPath)) {
     fail('PERMISSIONS.json exists but is not valid JSON');
   }
 } else {
-  console.log('  \u2139 PERMISSIONS.json not found (will use env/default tools until onboarding runs)');
+  console.log('  ℹ PERMISSIONS.json not found (will use env/default tools until onboarding runs)');
 }
 
 // 6. .env exists
@@ -228,10 +228,7 @@ if (checkConnection) {
   if (!token) {
     fail('Cannot test connection — DISCORD_TOKEN is not set');
   } else {
-    const connectionOk = await testDiscordConnection(token);
-    if (!connectionOk) {
-      // fail() was already called inside testDiscordConnection
-    }
+    await testDiscordConnection(token);
   }
 }
 
@@ -259,51 +256,57 @@ async function testDiscordConnection(discordToken: string): Promise<boolean> {
   });
 
   return new Promise<boolean>((resolve) => {
-    const timeout = setTimeout(() => {
+    let settled = false;
+    const settle = (success: boolean, fn: () => void) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      fn();
       client.destroy();
-      fail('Discord connection timed out after 10s', 'Check your network connection and DISCORD_TOKEN');
-      resolve(false);
+      resolve(success);
+    };
+
+    const timeout = setTimeout(() => {
+      settle(false, () => {
+        fail('Discord connection timed out after 10s', 'Check your network connection and DISCORD_TOKEN');
+      });
     }, 10_000);
 
     // Listen for shard errors (including 4014 Disallowed Intents)
     client.on('shardError', (err) => {
-      clearTimeout(timeout);
-      client.destroy();
-      fail(`Discord shard error: ${err.message}`);
-      resolve(false);
+      settle(false, () => {
+        fail(`Discord shard error: ${err.message}`);
+      });
     });
 
-    client.ws.on('close' as never, (_event: unknown, code: number) => {
-      if (code === 4014) {
-        clearTimeout(timeout);
-        client.destroy();
-        fail(
-          'Discord gateway closed with code 4014 (Disallowed Intents)',
-          'Enable Message Content Intent in Developer Portal → Bot → Privileged Gateway Intents',
-        );
-        resolve(false);
+    client.on('shardDisconnect', (event: { code: number }) => {
+      if (event.code === 4014) {
+        settle(false, () => {
+          fail(
+            'Discord gateway closed with code 4014 (Disallowed Intents)',
+            'Enable Message Content Intent in Developer Portal → Bot → Privileged Gateway Intents',
+          );
+        });
       }
     });
 
     client.once('ready', () => {
-      clearTimeout(timeout);
-      const guildCount = client.guilds.cache.size;
-      ok(`Discord connection successful (guilds: ${guildCount})`);
-      ok('Message Content Intent is enabled');
-      client.destroy();
-      resolve(true);
+      settle(true, () => {
+        const guildCount = client.guilds.cache.size;
+        ok(`Discord connection successful (guilds: ${guildCount})`);
+        ok('Message Content Intent is enabled');
+      });
     });
 
     client.login(discordToken).catch((err: Error) => {
-      clearTimeout(timeout);
-      client.destroy();
-      const msg = err.message ?? String(err);
-      if (msg.includes('TOKEN_INVALID') || msg.includes('An invalid token was provided')) {
-        fail('Discord login failed: invalid token', 'Reset the token in Developer Portal → Bot → Reset Token');
-      } else {
-        fail(`Discord login failed: ${msg}`);
-      }
-      resolve(false);
+      settle(false, () => {
+        const msg = err.message ?? String(err);
+        if (msg.includes('TOKEN_INVALID') || msg.includes('An invalid token was provided')) {
+          fail('Discord login failed: invalid token', 'Reset the token in Developer Portal → Bot → Reset Token');
+        } else {
+          fail(`Discord login failed: ${msg}`);
+        }
+      });
     });
   });
 }
