@@ -1,6 +1,8 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
+const PA_CONTEXT_MODULES = ['pa.md', 'pa-safety.md'] as const;
+
 export type ChannelContextEntry = {
   channelId: string;
   channelName: string;
@@ -152,8 +154,7 @@ export async function ensureIndexedDiscordChannelContext(args: {
 }
 
 export async function validatePaContextModules(contextModulesDir: string): Promise<void> {
-  const PA_MODULES = ['pa.md', 'pa-safety.md'];
-  for (const mod of PA_MODULES) {
+  for (const mod of PA_CONTEXT_MODULES) {
     const p = path.join(contextModulesDir, mod);
     try {
       await fs.access(p);
@@ -176,8 +177,7 @@ export async function loadDiscordChannelContext(opts: {
   const channelsDir = path.join(contentDir, 'discord', 'channels');
   const dmContextPath = path.join(channelsDir, 'dm.md');
 
-  const PA_MODULES = ['pa.md', 'pa-safety.md'];
-  const paContextFiles = PA_MODULES.map((f) => path.join(opts.contextModulesDir, f));
+  const paContextFiles = PA_CONTEXT_MODULES.map((f) => path.join(opts.contextModulesDir, f));
 
   await writeFileIfMissing(
     dmContextPath,
