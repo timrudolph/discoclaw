@@ -835,7 +835,7 @@ describe('pool forwarding (multi-turn opts wiring)', () => {
     }
   });
 
-  it('--verbose is omitted from LongRunningProcess when disabled', async () => {
+  it('--verbose is always passed even when verbose option is false', async () => {
     const execaMock = execa as any;
     execaMock.mockImplementation(() => makeProcessText({ stdout: 'ok', exitCode: 0 }));
 
@@ -860,9 +860,9 @@ describe('pool forwarding (multi-turn opts wiring)', () => {
       events.push(evt);
     }
 
-    // First call is the LRP spawn.
+    // --verbose is always required for stream-json output format.
     const lrpArgs = execaMock.mock.calls[0]?.[1] ?? [];
-    expect(lrpArgs).not.toContain('--verbose');
+    expect(lrpArgs).toContain('--verbose');
   });
 });
 
