@@ -21,6 +21,7 @@ export type ForgeResult = {
   rounds: number;
   reachedMaxRounds: boolean;
   error?: string;
+  planSummary?: string;
 };
 
 export type ForgeOrchestratorOpts = {
@@ -213,6 +214,60 @@ export function buildRevisionPrompt(
 }
 
 // ---------------------------------------------------------------------------
+// Plan summary extraction
+// ---------------------------------------------------------------------------
+
+export function buildPlanSummary(planContent: string): string {
+  const header = parsePlanFileHeader(planContent);
+
+  // Extract objective (match content between ## Objective and next ## heading)
+  const objMatch = planContent.match(/## Objective\n([\s\S]*?)(?=\n## )/);
+  const objective = objMatch?.[1]?.trim() || '(no objective)';
+
+  // Extract scope (just the "In:" section if present, otherwise the whole scope block)
+  const scopeMatch = planContent.match(/## Scope\s*\n([\s\S]*?)(?=\n## )/);
+  let scope = '';
+  if (scopeMatch) {
+    const scopeText = scopeMatch[1]!.trim();
+    const inMatch = scopeText.match(/\*\*In:\*\*\s*\n([\s\S]*?)(?=\n\*\*Out:\*\*|$)/);
+    scope = inMatch?.[1]?.trim() || scopeText;
+  }
+
+  // Extract changed files (look for file paths in the Changes section)
+  const changesMatch = planContent.match(/## Changes\s*\n([\s\S]*?)(?=\n## )/);
+  const files: string[] = [];
+  if (changesMatch) {
+    const fileMatches = changesMatch[1]!.matchAll(/####\s+`([^`]+)`/g);
+    for (const m of fileMatches) {
+      files.push(m[1]!);
+    }
+  }
+
+  const lines: string[] = [];
+
+  if (header) {
+    lines.push(`**${header.planId}** — ${header.title}`);
+    lines.push(`Status: ${header.status} | Bead: \`${header.beadId}\``);
+    lines.push('');
+  }
+
+  lines.push(`**Objective:** ${objective}`);
+
+  if (scope) {
+    lines.push('');
+    lines.push(`**Scope:**`);
+    lines.push(scope);
+  }
+
+  if (files.length > 0) {
+    lines.push('');
+    lines.push(`**Files:** ${files.map((f) => `\`${f}\``).join(', ')}`);
+  }
+
+  return lines.join('\n');
+}
+
+// ---------------------------------------------------------------------------
 // Runtime text collector
 // ---------------------------------------------------------------------------
 
@@ -401,6 +456,9 @@ export class ForgeOrchestrator {
         // Check if we should loop
         if (!lastVerdict.shouldLoop) {
           await this.updatePlanStatus(filePath, 'REVIEW');
+          // Re-read to get updated status in the summary
+          planContent = await fs.readFile(filePath, 'utf-8');
+          const summary = buildPlanSummary(planContent);
           const elapsed = Math.round((Date.now() - t0) / 1000);
           await onProgress(
             `Forge complete. Plan ${planId} ready for review (${round} round${round > 1 ? 's' : ''}, ${elapsed}s)`,
@@ -412,6 +470,7 @@ export class ForgeOrchestrator {
             finalVerdict: lastVerdict.maxSeverity,
             rounds: round,
             reachedMaxRounds: false,
+            planSummary: summary,
           };
         }
 
@@ -452,6 +511,9 @@ export class ForgeOrchestrator {
       );
       await this.atomicWrite(filePath, planContent);
       await this.updatePlanStatus(filePath, 'REVIEW');
+      // Re-read to get updated status in the summary
+      planContent = await fs.readFile(filePath, 'utf-8');
+      const summary = buildPlanSummary(planContent);
 
       const elapsed = Math.round((Date.now() - t0) / 1000);
       await onProgress(
@@ -465,6 +527,7 @@ export class ForgeOrchestrator {
         finalVerdict: lastVerdict.maxSeverity,
         rounds: round,
         reachedMaxRounds: true,
+        planSummary: summary,
       };
     } catch (err) {
       const errorMsg = String(err instanceof Error ? err.message : err);

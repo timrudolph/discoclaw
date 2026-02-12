@@ -9,6 +9,7 @@ import {
   buildDrafterPrompt,
   buildAuditorPrompt,
   buildRevisionPrompt,
+  buildPlanSummary,
   ForgeOrchestrator,
 } from './forge-commands.js';
 import type { ForgeOrchestratorOpts } from './forge-commands.js';
@@ -218,6 +219,117 @@ describe('buildRevisionPrompt', () => {
 });
 
 // ---------------------------------------------------------------------------
+// buildPlanSummary
+// ---------------------------------------------------------------------------
+
+describe('buildPlanSummary', () => {
+  it('extracts header, objective, scope, and files from plan content', () => {
+    const plan = [
+      '# Plan: Add rate limiting',
+      '',
+      '**ID:** plan-010',
+      '**Bead:** ws-abc',
+      '**Created:** 2026-02-12',
+      '**Status:** REVIEW',
+      '**Project:** discoclaw',
+      '',
+      '---',
+      '',
+      '## Objective',
+      '',
+      'Add rate limiting to the webhook handler.',
+      '',
+      '## Scope',
+      '',
+      '**In:**',
+      '- Add per-IP rate limiter',
+      '- Add 429 response handling',
+      '',
+      '**Out:**',
+      '- No changes to auth flow',
+      '',
+      '## Changes',
+      '',
+      '### File-by-file breakdown',
+      '',
+      '#### `src/webhook/handler.ts`',
+      '',
+      'Add rate limiter middleware.',
+      '',
+      '#### `src/webhook/rate-limiter.ts`',
+      '',
+      'New rate limiter module.',
+      '',
+      '## Risks',
+      '',
+      '- None.',
+    ].join('\n');
+
+    const summary = buildPlanSummary(plan);
+    expect(summary).toContain('**plan-010**');
+    expect(summary).toContain('Add rate limiting');
+    expect(summary).toContain('REVIEW');
+    expect(summary).toContain('ws-abc');
+    expect(summary).toContain('Add rate limiting to the webhook handler.');
+    expect(summary).toContain('per-IP rate limiter');
+    expect(summary).not.toContain('No changes to auth flow');
+    expect(summary).toContain('`src/webhook/handler.ts`');
+    expect(summary).toContain('`src/webhook/rate-limiter.ts`');
+  });
+
+  it('handles plan with no scope In/Out sections', () => {
+    const plan = [
+      '# Plan: Simple fix',
+      '',
+      '**ID:** plan-001',
+      '**Bead:** ws-001',
+      '**Created:** 2026-01-01',
+      '**Status:** DRAFT',
+      '**Project:** test',
+      '',
+      '## Objective',
+      '',
+      'Fix the bug.',
+      '',
+      '## Scope',
+      '',
+      'Just fix one file.',
+      '',
+      '## Changes',
+      '',
+      'No structured file changes.',
+      '',
+      '## Risks',
+    ].join('\n');
+
+    const summary = buildPlanSummary(plan);
+    expect(summary).toContain('Fix the bug.');
+    expect(summary).toContain('Just fix one file.');
+  });
+
+  it('returns (no objective) when objective section is empty', () => {
+    const plan = [
+      '# Plan: Empty',
+      '',
+      '**ID:** plan-002',
+      '**Bead:** ws-002',
+      '**Created:** 2026-01-01',
+      '**Status:** DRAFT',
+      '**Project:** test',
+      '',
+      '## Objective',
+      '',
+      '## Scope',
+      '',
+      '## Changes',
+    ].join('\n');
+
+    const summary = buildPlanSummary(plan);
+    expect(summary).toContain('(no objective)');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // ForgeOrchestrator
 // ---------------------------------------------------------------------------
 
@@ -242,6 +354,8 @@ describe('ForgeOrchestrator', () => {
     expect(result.error).toBeUndefined();
     expect(progress.some((p) => p.includes('Draft complete'))).toBe(true);
     expect(progress.some((p) => p.includes('Forge complete'))).toBe(true);
+    expect(result.planSummary).toBeDefined();
+    expect(result.planSummary).toContain('plan-001');
   });
 
   it('completes in 2 rounds when first audit has medium concerns', async () => {
