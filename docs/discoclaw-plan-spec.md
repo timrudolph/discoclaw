@@ -11,13 +11,15 @@
 
 ## Canonical Location And Filename
 
-Store plans under:
+Store plans under one of the standard subdirectories:
 
-- `plans/<kebab-slug>.discoclaw-plan.md`
+- `plans/starters/<kebab-slug>.discoclaw-plan.md` — production-ready
+- `plans/examples/<kebab-slug>.discoclaw-plan.md` — illustrative
+- `plans/community/<kebab-slug>.discoclaw-plan.md` — user-created (gitignored)
 
 Example:
 
-- `plans/openai-compatible-runtime-adapter.discoclaw-plan.md`
+- `plans/examples/openai-compatible-runtime-adapter.discoclaw-plan.md`
 
 ## Canonical Metadata Format (Required)
 

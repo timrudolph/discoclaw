@@ -27,7 +27,7 @@ Collect only missing values:
 
 Create exactly one markdown file at:
 
-- `plans/<kebab-slug>.discoclaw-plan.md`
+- `plans/community/<kebab-slug>.discoclaw-plan.md`
 
 The file must include:
 
