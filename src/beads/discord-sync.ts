@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import { ChannelType } from 'discord.js';
 import type { Client, ForumChannel, Guild, ThreadChannel } from 'discord.js';
 import type { BeadData, TagMap } from './types.js';
-import { STATUS_EMOJI } from './types.js';
+import { BEAD_STATUSES, STATUS_EMOJI } from './types.js';
 
 // ---------------------------------------------------------------------------
 // Thread name builder
@@ -125,6 +125,46 @@ export async function reloadTagMapInPlace(tagMapPath: string, tagMap: TagMap): P
 }
 
 // ---------------------------------------------------------------------------
+// Status tag helpers
+// ---------------------------------------------------------------------------
+
+/** Returns the set of Discord tag IDs that correspond to bead statuses. */
+export function getStatusTagIds(tagMap: TagMap): Set<string> {
+  const ids = new Set<string>();
+  for (const status of BEAD_STATUSES) {
+    const id = tagMap[status];
+    if (id) ids.add(id);
+  }
+  return ids;
+}
+
+/**
+ * Strip old status tags, add the new one, preserve content tags.
+ * Status tag gets priority: up to 4 content tags + 1 status tag.
+ * If no status tag ID exists in tagMap, content tags get all 5 slots.
+ */
+export function buildAppliedTagsWithStatus(
+  currentTagIds: string[],
+  status: string,
+  tagMap: TagMap,
+): string[] {
+  const statusIds = getStatusTagIds(tagMap);
+  const uniqueContent = [...new Set(currentTagIds.filter(id => !statusIds.has(id)))];
+  const newStatusId = tagMap[status];
+  if (newStatusId) {
+    return [...uniqueContent.slice(0, 4), newStatusId];
+  }
+  return uniqueContent.slice(0, 5);
+}
+
+/** Order-insensitive comparison of two tag ID arrays. */
+function tagsEqual(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  const sorted = (arr: string[]) => [...arr].sort();
+  return sorted(a).every((v, i) => v === sorted(b)[i]);
+}
+
+// ---------------------------------------------------------------------------
 // Starter message content builder
 // ---------------------------------------------------------------------------
 
@@ -165,7 +205,11 @@ export async function createBeadThread(
     const tagId = tagMap[cleaned] ?? tagMap[label];
     if (tagId) appliedTagIds.push(tagId);
   }
-  const uniqueTagIds = [...new Set(appliedTagIds)];
+  const uniqueTagIds = buildAppliedTagsWithStatus(
+    [...new Set(appliedTagIds)],
+    bead.status,
+    tagMap,
+  );
 
   const message = buildBeadStarterContent(bead, mentionUserId).slice(0, 2000);
 
@@ -176,7 +220,7 @@ export async function createBeadThread(
       // Prevent accidental @everyone/@here from bead descriptions.
       allowedMentions: { parse: [], users: mentionUserId ? [mentionUserId] : [] },
     },
-    appliedTags: uniqueTagIds.slice(0, 5), // Discord limit: 5 tags
+    appliedTags: uniqueTagIds,
   });
 
   return thread.id;
@@ -204,6 +248,7 @@ export async function closeBeadThread(
   client: Client,
   threadId: string,
   bead: BeadData,
+  tagMap?: TagMap,
 ): Promise<void> {
   const thread = await fetchThreadChannel(client, threadId);
   if (!thread) return;
@@ -248,6 +293,16 @@ export async function closeBeadThread(
     // Ignore rename failures.
   }
 
+  if (tagMap) {
+    try {
+      const current: string[] = (thread as any).appliedTags ?? [];
+      const updated = buildAppliedTagsWithStatus(current, bead.status, tagMap);
+      if (!tagsEqual(current, updated)) {
+        await (thread as any).edit({ appliedTags: updated });
+      }
+    } catch { /* ignore */ }
+  }
+
   try {
     await thread.setArchived(true);
   } catch {
@@ -255,16 +310,24 @@ export async function closeBeadThread(
   }
 }
 
-/** Check if a bead thread is already in its final closed state (archived + correct name). */
+/** Check if a bead thread is already in its final closed state (archived + correct name + correct tags). */
 export async function isBeadThreadAlreadyClosed(
   client: Client,
   threadId: string,
   bead: BeadData,
+  tagMap?: TagMap,
 ): Promise<boolean> {
   const thread = await fetchThreadChannel(client, threadId);
   if (!thread) return true; // Thread doesn't exist — nothing to close.
   const closedName = buildThreadName(bead.id, bead.title, bead.status);
-  return thread.archived === true && thread.name === closedName;
+  if (thread.archived !== true || thread.name !== closedName) return false;
+  // If tagMap provided, verify tags match expected closed state.
+  if (tagMap && getStatusTagIds(tagMap).size > 0) {
+    const current: string[] = (thread as any).appliedTags ?? [];
+    const expected = buildAppliedTagsWithStatus(current, bead.status, tagMap);
+    if (!tagsEqual(current, expected)) return false;
+  }
+  return true;
 }
 
 /** Update a thread's name to reflect current bead state. */
@@ -312,6 +375,22 @@ export async function updateBeadStarterMessage(
     content: newContent.slice(0, 2000),
     allowedMentions: { parse: [], users: mentionUserId ? [mentionUserId] : [] },
   });
+  return true;
+}
+
+/** Update a thread's forum tags to reflect current bead status. */
+export async function updateBeadThreadTags(
+  client: Client,
+  threadId: string,
+  bead: BeadData,
+  tagMap: TagMap,
+): Promise<boolean> {
+  const thread = await fetchThreadChannel(client, threadId);
+  if (!thread) return false;
+  const current: string[] = (thread as any).appliedTags ?? [];
+  const updated = buildAppliedTagsWithStatus(current, bead.status, tagMap);
+  if (tagsEqual(current, updated)) return false;
+  await (thread as any).edit({ appliedTags: updated });
   return true;
 }
 

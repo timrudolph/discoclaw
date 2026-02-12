@@ -92,8 +92,8 @@ export function createStatusPoster(channel: Sendable, opts?: StatusPosterOpts): 
     },
 
     async beadSyncComplete(result) {
-      const { threadsCreated, emojisUpdated, starterMessagesUpdated, threadsArchived, statusesUpdated, warnings } = result;
-      const allZero = threadsCreated === 0 && emojisUpdated === 0 && starterMessagesUpdated === 0 && threadsArchived === 0 && statusesUpdated === 0;
+      const { threadsCreated, emojisUpdated, starterMessagesUpdated, threadsArchived, statusesUpdated, tagsUpdated, warnings } = result;
+      const allZero = threadsCreated === 0 && emojisUpdated === 0 && starterMessagesUpdated === 0 && threadsArchived === 0 && statusesUpdated === 0 && tagsUpdated === 0;
       if (allZero && warnings === 0) return;
 
       const color = warnings > 0 ? Colors.orange : Colors.green;
@@ -107,6 +107,7 @@ export function createStatusPoster(channel: Sendable, opts?: StatusPosterOpts): 
       if (starterMessagesUpdated > 0) embed.addFields({ name: 'Starters Updated', value: String(starterMessagesUpdated), inline: true });
       if (threadsArchived > 0) embed.addFields({ name: 'Archived', value: String(threadsArchived), inline: true });
       if (statusesUpdated > 0) embed.addFields({ name: 'Statuses Fixed', value: String(statusesUpdated), inline: true });
+      if (tagsUpdated > 0) embed.addFields({ name: 'Tags Updated', value: String(tagsUpdated), inline: true });
       if (warnings > 0) embed.addFields({ name: 'Warnings', value: String(warnings), inline: true });
 
       await send(embed);

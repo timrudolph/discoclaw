@@ -20,8 +20,10 @@ if [[ -z "$api_key" ]]; then
   exit 0
 fi
 
-# Load available tags from tag-map
-available_tags=$(jq -r 'keys | join(", ")' "$SCRIPT_DIR/tag-map.json")
+# Load available tags from tag-map, excluding status tags.
+TAG_MAP="${DISCOCLAW_BEADS_TAG_MAP:-$SCRIPT_DIR/tag-map.json}"
+content_tags_json=$(jq '{} + (to_entries | map(select(.key != "open" and .key != "in_progress" and .key != "blocked" and .key != "closed")) | from_entries)' "$TAG_MAP" 2>/dev/null) || { echo ""; exit 0; }
+available_tags=$(echo "$content_tags_json" | jq -r 'keys | join(", ")') || { echo ""; exit 0; }
 
 prompt="Classify this task into 1-3 tags from this list: $available_tags
 
@@ -32,8 +34,6 @@ Rules:
 - infra: infrastructure, Docker, services, networking, servers
 - token-cost: token usage, cost optimization, billing, API spend
 - personal: personal life tasks (non-technical)
-- blocked: do NOT use this — it's a status tag, not a content tag
-
 If the task is clearly personal/life stuff, use ONLY the personal tag.
 
 Return ONLY a comma-separated list of tag names, nothing else.
@@ -58,7 +58,7 @@ if [[ -n "$tags" ]]; then
   IFS=',' read -ra tag_arr <<< "$tags"
   for tag in "${tag_arr[@]}"; do
     tag=$(echo "$tag" | tr -d '[:space:]')
-    if jq -e --arg t "$tag" '.[$t] // empty' "$SCRIPT_DIR/tag-map.json" >/dev/null 2>&1; then
+    if echo "$content_tags_json" | jq -e --arg t "$tag" '.[$t] // empty' >/dev/null 2>&1; then
       [[ -n "$valid_tags" ]] && valid_tags="$valid_tags,$tag" || valid_tags="$tag"
     fi
   done

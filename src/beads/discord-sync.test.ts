@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import { describe, expect, it, vi } from 'vitest';
-import { buildThreadName, buildBeadStarterContent, getThreadIdFromBead, updateBeadStarterMessage, closeBeadThread, reloadTagMapInPlace } from './discord-sync.js';
+import { buildThreadName, buildBeadStarterContent, getThreadIdFromBead, updateBeadStarterMessage, closeBeadThread, isBeadThreadAlreadyClosed, reloadTagMapInPlace, getStatusTagIds, buildAppliedTagsWithStatus, updateBeadThreadTags } from './discord-sync.js';
 import type { BeadData, TagMap } from './types.js';
 
 // ---------------------------------------------------------------------------
@@ -377,5 +377,276 @@ describe('reloadTagMapInPlace', () => {
     const tagMap: TagMap = { existing: '999' };
     await expect(reloadTagMapInPlace('/tmp/bad-val.json', tagMap)).rejects.toThrow('must be a string, got number');
     expect(tagMap).toEqual({ existing: '999' });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getStatusTagIds
+// ---------------------------------------------------------------------------
+
+describe('getStatusTagIds', () => {
+  it('returns correct IDs for all statuses present', () => {
+    const tagMap: TagMap = { open: '1', in_progress: '2', blocked: '3', closed: '4', feature: '5' };
+    const ids = getStatusTagIds(tagMap);
+    expect(ids).toEqual(new Set(['1', '2', '3', '4']));
+  });
+
+  it('handles partial entries', () => {
+    const tagMap: TagMap = { blocked: '3', feature: '5' };
+    const ids = getStatusTagIds(tagMap);
+    expect(ids).toEqual(new Set(['3']));
+  });
+
+  it('returns empty set when no status tags configured', () => {
+    const tagMap: TagMap = { feature: '5', bug: '6' };
+    const ids = getStatusTagIds(tagMap);
+    expect(ids.size).toBe(0);
+  });
+
+  it('ignores non-status keys', () => {
+    const tagMap: TagMap = { feature: '5', open: '1' };
+    const ids = getStatusTagIds(tagMap);
+    expect(ids).toEqual(new Set(['1']));
+    expect(ids.has('5')).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildAppliedTagsWithStatus
+// ---------------------------------------------------------------------------
+
+describe('buildAppliedTagsWithStatus', () => {
+  it('swaps status tag preserving content tags', () => {
+    const tagMap: TagMap = { open: 's1', closed: 's2', feature: 'c1' };
+    const result = buildAppliedTagsWithStatus(['c1', 's1'], 'closed', tagMap);
+    expect(result).toContain('s2');
+    expect(result).toContain('c1');
+    expect(result).not.toContain('s1');
+  });
+
+  it('handles missing status in tagMap — content tags unchanged', () => {
+    const tagMap: TagMap = { feature: 'c1', bug: 'c2' };
+    const result = buildAppliedTagsWithStatus(['c1', 'c2'], 'open', tagMap);
+    expect(result).toEqual(['c1', 'c2']);
+  });
+
+  it('status tag gets priority: 5 content tags → 4 content + 1 status', () => {
+    const tagMap: TagMap = { open: 's1', a: 'c1', b: 'c2', c: 'c3', d: 'c4', e: 'c5' };
+    const result = buildAppliedTagsWithStatus(['c1', 'c2', 'c3', 'c4', 'c5'], 'open', tagMap);
+    expect(result.length).toBe(5);
+    expect(result).toContain('s1');
+    expect(result.filter(id => id !== 's1').length).toBe(4);
+  });
+
+  it('no-op when correct status tag already present', () => {
+    const tagMap: TagMap = { open: 's1', feature: 'c1' };
+    const result = buildAppliedTagsWithStatus(['c1', 's1'], 'open', tagMap);
+    expect(result).toContain('s1');
+    expect(result).toContain('c1');
+    expect(result.length).toBe(2);
+  });
+
+  it('strips old status tag even if new status not in tagMap', () => {
+    const tagMap: TagMap = { open: 's1', feature: 'c1' };
+    // in_progress not in tagMap
+    const result = buildAppliedTagsWithStatus(['c1', 's1'], 'in_progress', tagMap);
+    expect(result).not.toContain('s1');
+    expect(result).toEqual(['c1']);
+  });
+
+  it('dedupes content tags', () => {
+    const tagMap: TagMap = { open: 's1', feature: 'c1' };
+    const result = buildAppliedTagsWithStatus(['c1', 'c1', 'c1'], 'open', tagMap);
+    expect(result.filter(id => id === 'c1').length).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// updateBeadThreadTags
+// ---------------------------------------------------------------------------
+
+describe('updateBeadThreadTags', () => {
+  const bead: BeadData = {
+    id: 'ws-001', title: 'Test', status: 'in_progress',
+    priority: 2, external_ref: '', labels: [],
+  };
+
+  function makeClient(thread: any): any {
+    return {
+      channels: { cache: { get: () => thread } },
+      user: { id: 'bot-123' },
+    };
+  }
+
+  it('returns false when thread not found', async () => {
+    const client = { channels: { cache: { get: () => undefined } } } as any;
+    const result = await updateBeadThreadTags(client, 'missing', bead, { in_progress: 's2' });
+    expect(result).toBe(false);
+  });
+
+  it('returns false when tags already match (order-insensitive)', async () => {
+    const tagMap: TagMap = { in_progress: 's2', feature: 'c1' };
+    const thread = {
+      isThread: () => true,
+      appliedTags: ['s2', 'c1'],
+      edit: vi.fn(),
+    };
+    const result = await updateBeadThreadTags(makeClient(thread), '123', bead, tagMap);
+    expect(result).toBe(false);
+    expect(thread.edit).not.toHaveBeenCalled();
+  });
+
+  it('calls thread.edit when status tag differs', async () => {
+    const tagMap: TagMap = { open: 's1', in_progress: 's2', feature: 'c1' };
+    const thread = {
+      isThread: () => true,
+      appliedTags: ['c1', 's1'],
+      edit: vi.fn(),
+    };
+    const result = await updateBeadThreadTags(makeClient(thread), '123', bead, tagMap);
+    expect(result).toBe(true);
+    expect(thread.edit).toHaveBeenCalledWith({
+      appliedTags: expect.arrayContaining(['s2', 'c1']),
+    });
+    expect(thread.edit.mock.calls[0][0].appliedTags).not.toContain('s1');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// closeBeadThread with tagMap
+// ---------------------------------------------------------------------------
+
+describe('closeBeadThread with tagMap', () => {
+  const bead: BeadData = {
+    id: 'ws-001', title: 'Test', status: 'closed',
+    priority: 2, external_ref: '', labels: [], close_reason: 'Done',
+  };
+
+  function makeClient(thread: any): any {
+    return {
+      channels: { cache: { get: () => thread } },
+      user: { id: 'bot-123' },
+    };
+  }
+
+  function makeCloseThread(opts?: { appliedTags?: string[] }): any {
+    return {
+      isThread: () => true,
+      archived: false,
+      appliedTags: opts?.appliedTags ?? [],
+      fetchStarterMessage: vi.fn(async () => ({
+        author: { id: 'bot-123' },
+        content: 'old content',
+        edit: vi.fn(),
+      })),
+      send: vi.fn(),
+      setName: vi.fn(),
+      setArchived: vi.fn(),
+      edit: vi.fn(),
+    };
+  }
+
+  it('applies closed status tag before archiving when tagMap provided', async () => {
+    const tagMap: TagMap = { closed: 'sc', feature: 'c1' };
+    const thread = makeCloseThread({ appliedTags: ['c1'] });
+    await closeBeadThread(makeClient(thread), 'thread-1', bead, tagMap);
+
+    expect(thread.edit).toHaveBeenCalledWith({
+      appliedTags: expect.arrayContaining(['sc', 'c1']),
+    });
+    expect(thread.setArchived).toHaveBeenCalledWith(true);
+  });
+
+  it('skips tag edit when tags already match', async () => {
+    const tagMap: TagMap = { closed: 'sc', feature: 'c1' };
+    const thread = makeCloseThread({ appliedTags: ['c1', 'sc'] });
+    await closeBeadThread(makeClient(thread), 'thread-1', bead, tagMap);
+
+    expect(thread.edit).not.toHaveBeenCalled();
+  });
+
+  it('skips tag update when tagMap is undefined (backward compat)', async () => {
+    const thread = makeCloseThread({ appliedTags: ['c1'] });
+    await closeBeadThread(makeClient(thread), 'thread-1', bead);
+
+    expect(thread.edit).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isBeadThreadAlreadyClosed with tagMap
+// ---------------------------------------------------------------------------
+
+describe('isBeadThreadAlreadyClosed with tagMap', () => {
+  const bead: BeadData = {
+    id: 'ws-001', title: 'Test', status: 'closed',
+    priority: 2, external_ref: '', labels: [],
+  };
+
+  function makeClient(thread: any): any {
+    return {
+      channels: { cache: { get: () => thread } },
+    };
+  }
+
+  const closedName = '\u2611\uFE0F [001] Test';
+
+  it('returns false when archived+named but has wrong/missing status tag', async () => {
+    const tagMap: TagMap = { closed: 'sc', open: 'so' };
+    const thread = {
+      isThread: () => true,
+      archived: true,
+      name: closedName,
+      appliedTags: ['c1'],
+    };
+    const result = await isBeadThreadAlreadyClosed(makeClient(thread), '123', bead, tagMap);
+    expect(result).toBe(false);
+  });
+
+  it('returns false when thread has stale status tag', async () => {
+    const tagMap: TagMap = { closed: 'sc', open: 'so' };
+    const thread = {
+      isThread: () => true,
+      archived: true,
+      name: closedName,
+      appliedTags: ['so', 'c1'], // has open tag instead of closed
+    };
+    const result = await isBeadThreadAlreadyClosed(makeClient(thread), '123', bead, tagMap);
+    expect(result).toBe(false);
+  });
+
+  it('returns true when thread has correct closed tag', async () => {
+    const tagMap: TagMap = { closed: 'sc', open: 'so' };
+    const thread = {
+      isThread: () => true,
+      archived: true,
+      name: closedName,
+      appliedTags: ['c1', 'sc'],
+    };
+    const result = await isBeadThreadAlreadyClosed(makeClient(thread), '123', bead, tagMap);
+    expect(result).toBe(true);
+  });
+
+  it('returns true (backward compat) when tagMap omitted', async () => {
+    const thread = {
+      isThread: () => true,
+      archived: true,
+      name: closedName,
+      appliedTags: [],
+    };
+    const result = await isBeadThreadAlreadyClosed(makeClient(thread), '123', bead);
+    expect(result).toBe(true);
+  });
+
+  it('returns true when tagMap has no status entries', async () => {
+    const tagMap: TagMap = { feature: 'c1' };
+    const thread = {
+      isThread: () => true,
+      archived: true,
+      name: closedName,
+      appliedTags: [],
+    };
+    const result = await isBeadThreadAlreadyClosed(makeClient(thread), '123', bead, tagMap);
+    expect(result).toBe(true);
   });
 });

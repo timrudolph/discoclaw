@@ -7,6 +7,7 @@ vi.mock('./bead-sync.js', () => ({
     starterMessagesUpdated: 0,
     threadsArchived: 0,
     statusesUpdated: 0,
+    tagsUpdated: 0,
     warnings: 0,
   })),
 }));
@@ -82,7 +83,7 @@ describe('BeadSyncCoordinator', () => {
     const firstPromise = new Promise<void>((r) => { resolveFirst = r; });
     (runBeadSync as any).mockImplementationOnce(async () => {
       await firstPromise;
-      return { threadsCreated: 1, emojisUpdated: 0, starterMessagesUpdated: 0, threadsArchived: 0, statusesUpdated: 0, warnings: 0 };
+      return { threadsCreated: 1, emojisUpdated: 0, starterMessagesUpdated: 0, threadsArchived: 0, statusesUpdated: 0, tagsUpdated: 0, warnings: 0 };
     });
 
     const coord = new BeadSyncCoordinator(makeOpts());

@@ -13,6 +13,7 @@ vi.mock('./discord-sync.js', () => ({
   isBeadThreadAlreadyClosed: vi.fn(async () => false),
   updateBeadThreadName: vi.fn(async () => true),
   updateBeadStarterMessage: vi.fn(async () => true),
+  updateBeadThreadTags: vi.fn(async () => false),
   getThreadIdFromBead: vi.fn((bead: any) => {
     const ref = (bead.external_ref ?? '').trim();
     if (!ref) return null;
@@ -247,7 +248,7 @@ describe('runBeadSync', () => {
       throttleMs: 0,
     } as any);
 
-    expect(isBeadThreadAlreadyClosed).toHaveBeenCalledWith(expect.anything(), '888', expect.objectContaining({ id: 'ws-006' }));
+    expect(isBeadThreadAlreadyClosed).toHaveBeenCalledWith(expect.anything(), '888', expect.objectContaining({ id: 'ws-006' }), expect.any(Object));
     expect(closeBeadThread).not.toHaveBeenCalled();
     expect(result.threadsArchived).toBe(0);
   });
@@ -285,6 +286,49 @@ describe('runBeadSync', () => {
     } as any);
 
     expect(result.warnings).toBe(0);
+  });
+
+  it('tagsUpdated counter increments when updateBeadThreadTags returns true', async () => {
+    const { bdList } = await import('./bd-cli.js');
+    const { updateBeadThreadTags } = await import('./discord-sync.js');
+
+    (bdList as any).mockResolvedValueOnce([
+      { id: 'ws-020', title: 'T', status: 'open', labels: [], external_ref: 'discord:777' },
+    ]);
+    (updateBeadThreadTags as any).mockResolvedValueOnce(true);
+
+    const result = await runBeadSync({
+      client: makeClient(),
+      guild: makeGuild(),
+      forumId: 'forum',
+      tagMap: { open: 's1' },
+      beadsCwd: '/tmp',
+      throttleMs: 0,
+    } as any);
+
+    expect(updateBeadThreadTags).toHaveBeenCalledWith(expect.anything(), '777', expect.objectContaining({ id: 'ws-020' }), { open: 's1' });
+    expect(result.tagsUpdated).toBe(1);
+  });
+
+  it('warnings increment when updateBeadThreadTags throws', async () => {
+    const { bdList } = await import('./bd-cli.js');
+    const { updateBeadThreadTags } = await import('./discord-sync.js');
+
+    (bdList as any).mockResolvedValueOnce([
+      { id: 'ws-021', title: 'U', status: 'open', labels: [], external_ref: 'discord:888' },
+    ]);
+    (updateBeadThreadTags as any).mockRejectedValueOnce(new Error('Discord API failure'));
+
+    const result = await runBeadSync({
+      client: makeClient(),
+      guild: makeGuild(),
+      forumId: 'forum',
+      tagMap: {},
+      beadsCwd: '/tmp',
+      throttleMs: 0,
+    } as any);
+
+    expect(result.warnings).toBeGreaterThanOrEqual(1);
   });
 
   it('increments warnings counter on phase failures', async () => {

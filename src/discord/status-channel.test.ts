@@ -78,7 +78,7 @@ describe('createStatusPoster', () => {
     const ch = mockChannel();
     const poster = createStatusPoster(ch);
     await poster.beadSyncComplete({
-      threadsCreated: 1, emojisUpdated: 0, starterMessagesUpdated: 2, threadsArchived: 3, statusesUpdated: 0, warnings: 0,
+      threadsCreated: 1, emojisUpdated: 0, starterMessagesUpdated: 2, threadsArchived: 3, statusesUpdated: 0, tagsUpdated: 0, warnings: 0,
     });
     expect(ch.send).toHaveBeenCalledOnce();
     const embed = ch.send.mock.calls[0][0].embeds[0];
@@ -97,7 +97,7 @@ describe('createStatusPoster', () => {
     const ch = mockChannel();
     const poster = createStatusPoster(ch);
     await poster.beadSyncComplete({
-      threadsCreated: 0, emojisUpdated: 0, starterMessagesUpdated: 0, threadsArchived: 0, statusesUpdated: 0, warnings: 2,
+      threadsCreated: 0, emojisUpdated: 0, starterMessagesUpdated: 0, threadsArchived: 0, statusesUpdated: 0, tagsUpdated: 0, warnings: 2,
     });
     expect(ch.send).toHaveBeenCalledOnce();
     const embed = ch.send.mock.calls[0][0].embeds[0];
@@ -111,7 +111,7 @@ describe('createStatusPoster', () => {
     const ch = mockChannel();
     const poster = createStatusPoster(ch);
     await poster.beadSyncComplete({
-      threadsCreated: 2, emojisUpdated: 0, starterMessagesUpdated: 0, threadsArchived: 1, statusesUpdated: 0, warnings: 1,
+      threadsCreated: 2, emojisUpdated: 0, starterMessagesUpdated: 0, threadsArchived: 1, statusesUpdated: 0, tagsUpdated: 0, warnings: 1,
     });
     expect(ch.send).toHaveBeenCalledOnce();
     const embed = ch.send.mock.calls[0][0].embeds[0];
@@ -126,7 +126,7 @@ describe('createStatusPoster', () => {
     const ch = mockChannel();
     const poster = createStatusPoster(ch);
     await poster.beadSyncComplete({
-      threadsCreated: 0, emojisUpdated: 0, starterMessagesUpdated: 0, threadsArchived: 0, statusesUpdated: 0, warnings: 0,
+      threadsCreated: 0, emojisUpdated: 0, starterMessagesUpdated: 0, threadsArchived: 0, statusesUpdated: 0, tagsUpdated: 0, warnings: 0,
     });
     expect(ch.send).not.toHaveBeenCalled();
   });

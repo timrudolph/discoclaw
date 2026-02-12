@@ -68,6 +68,7 @@ export type BeadSyncResult = {
   starterMessagesUpdated: number;
   threadsArchived: number;
   statusesUpdated: number;
+  tagsUpdated: number;
   warnings: number;
 };
 

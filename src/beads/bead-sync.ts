@@ -11,6 +11,7 @@ import {
   isBeadThreadAlreadyClosed,
   updateBeadThreadName,
   updateBeadStarterMessage,
+  updateBeadThreadTags,
   getThreadIdFromBead,
   ensureUnarchived,
   findExistingThreadForBead,
@@ -54,7 +55,7 @@ export async function runBeadSync(opts: BeadSyncOptions): Promise<BeadSyncResult
   const forum = await resolveBeadsForum(guild, forumId);
   if (!forum) {
     log?.warn({ forumId }, 'bead-sync: forum not found');
-    const result: BeadSyncResult = { threadsCreated: 0, emojisUpdated: 0, starterMessagesUpdated: 0, threadsArchived: 0, statusesUpdated: 0, warnings: 1 };
+    const result: BeadSyncResult = { threadsCreated: 0, emojisUpdated: 0, starterMessagesUpdated: 0, threadsArchived: 0, statusesUpdated: 0, tagsUpdated: 0, warnings: 1 };
     await opts.statusPoster?.beadSyncComplete(result);
     return result;
   }
@@ -64,6 +65,7 @@ export async function runBeadSync(opts: BeadSyncOptions): Promise<BeadSyncResult
   let starterMessagesUpdated = 0;
   let threadsArchived = 0;
   let statusesUpdated = 0;
+  let tagsUpdated = 0;
   let warnings = 0;
 
   // Load all beads (including closed for Phase 4).
@@ -115,6 +117,7 @@ export async function runBeadSync(opts: BeadSyncOptions): Promise<BeadSyncResult
   for (const bead of needsBlocked) {
     try {
       await bdUpdate(bead.id, { status: 'blocked' as any }, beadsCwd);
+      bead.status = 'blocked'; // keep in-memory copy current for Phase 3
       statusesUpdated++;
       log?.info({ beadId: bead.id }, 'bead-sync:phase2 status updated to blocked');
     } catch (err) {
@@ -152,6 +155,16 @@ export async function runBeadSync(opts: BeadSyncOptions): Promise<BeadSyncResult
       log?.warn({ err, beadId: bead.id, threadId }, 'bead-sync:phase3 starter update failed');
       warnings++;
     }
+    try {
+      const tagChanged = await updateBeadThreadTags(client, threadId, bead, tagMap);
+      if (tagChanged) {
+        tagsUpdated++;
+        log?.info({ beadId: bead.id, threadId }, 'bead-sync:phase3 tags updated');
+      }
+    } catch (err) {
+      log?.warn({ err, beadId: bead.id, threadId }, 'bead-sync:phase3 tag update failed');
+      warnings++;
+    }
     await sleep(throttleMs);
   }
 
@@ -164,7 +177,7 @@ export async function runBeadSync(opts: BeadSyncOptions): Promise<BeadSyncResult
     try {
       let alreadyClosed = false;
       try {
-        alreadyClosed = await isBeadThreadAlreadyClosed(client, threadId, bead);
+        alreadyClosed = await isBeadThreadAlreadyClosed(client, threadId, bead, tagMap);
       } catch {
         // Check failed (rate limit, network) — proceed with close attempt.
         warnings++;
@@ -173,7 +186,7 @@ export async function runBeadSync(opts: BeadSyncOptions): Promise<BeadSyncResult
         await sleep(throttleMs);
         continue;
       }
-      await closeBeadThread(client, threadId, bead);
+      await closeBeadThread(client, threadId, bead, tagMap);
       threadsArchived++;
       log?.info({ beadId: bead.id, threadId }, 'bead-sync:phase4 archived');
     } catch (err) {
@@ -183,8 +196,8 @@ export async function runBeadSync(opts: BeadSyncOptions): Promise<BeadSyncResult
     await sleep(throttleMs);
   }
 
-  log?.info({ threadsCreated, emojisUpdated, starterMessagesUpdated, threadsArchived, statusesUpdated, warnings }, 'bead-sync: complete');
-  const result: BeadSyncResult = { threadsCreated, emojisUpdated, starterMessagesUpdated, threadsArchived, statusesUpdated, warnings };
+  log?.info({ threadsCreated, emojisUpdated, starterMessagesUpdated, threadsArchived, statusesUpdated, tagsUpdated, warnings }, 'bead-sync: complete');
+  const result: BeadSyncResult = { threadsCreated, emojisUpdated, starterMessagesUpdated, threadsArchived, statusesUpdated, tagsUpdated, warnings };
   await opts.statusPoster?.beadSyncComplete(result);
   return result;
 }

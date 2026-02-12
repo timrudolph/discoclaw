@@ -43,6 +43,7 @@ function makeCoordinator() {
       starterMessagesUpdated: 0,
       threadsArchived: 0,
       statusesUpdated: 0,
+      tagsUpdated: 0,
       warnings: 0,
     })),
   } as any;

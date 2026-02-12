@@ -6,7 +6,7 @@ import type { RuntimeAdapter } from '../runtime/types.js';
 import type { TagMap, BeadData, BeadStatus, BeadSyncResult } from '../beads/types.js';
 import type { BeadSyncCoordinator } from '../beads/bead-sync-coordinator.js';
 import type { ForumCountSync } from './forum-count-sync.js';
-import { isBeadStatus } from '../beads/types.js';
+import { BEAD_STATUSES, isBeadStatus } from '../beads/types.js';
 import { bdShow, bdList, bdCreate, bdUpdate, bdClose, bdAddLabel } from '../beads/bd-cli.js';
 import {
   resolveBeadsForum,
@@ -14,6 +14,7 @@ import {
   closeBeadThread,
   updateBeadThreadName,
   updateBeadStarterMessage,
+  updateBeadThreadTags,
   ensureUnarchived,
   getThreadIdFromBead,
   reloadTagMapInPlace,
@@ -92,8 +93,9 @@ export async function executeBeadAction(
         beadCtx.beadsCwd,
       );
 
-      // Auto-tag if enabled and we have available tags.
-      const tagNames = Object.keys(beadCtx.tagMap);
+      // Auto-tag if enabled and we have available tags (excluding status tags).
+      const statusSet = new Set<string>(BEAD_STATUSES);
+      const tagNames = Object.keys(beadCtx.tagMap).filter(k => !statusSet.has(k));
       if (beadCtx.autoTag && tagNames.length > 0) {
         try {
           const suggestedTags = await autoTagBead(
@@ -182,6 +184,11 @@ export async function executeBeadAction(
             } catch (err) {
               beadCtx.log?.warn({ err, beadId: action.beadId, threadId }, 'beads:starter message update failed');
             }
+            try {
+              await updateBeadThreadTags(ctx.client, threadId, bead, beadCtx.tagMap);
+            } catch (err) {
+              beadCtx.log?.warn({ err, beadId: action.beadId, threadId }, 'beads:thread tag update failed');
+            }
           }
         }
       } catch (err) {
@@ -211,7 +218,7 @@ export async function executeBeadAction(
           const threadId = getThreadIdFromBead(bead);
           if (threadId) {
             try {
-              await closeBeadThread(ctx.client, threadId, bead);
+              await closeBeadThread(ctx.client, threadId, bead, beadCtx.tagMap);
             } catch (err) {
               beadCtx.log?.warn({ err, beadId: action.beadId, threadId }, 'beads:thread close failed');
             }
@@ -302,7 +309,7 @@ export async function executeBeadAction(
         }
         return {
           ok: true,
-          summary: `Sync complete: ${result.threadsCreated} created, ${result.emojisUpdated} updated, ${result.starterMessagesUpdated} starters, ${result.threadsArchived} archived, ${result.statusesUpdated} status-fixes${result.warnings ? `, ${result.warnings} warnings` : ''}`,
+          summary: `Sync complete: ${result.threadsCreated} created, ${result.emojisUpdated} updated, ${result.starterMessagesUpdated} starters, ${result.tagsUpdated} tags, ${result.threadsArchived} archived, ${result.statusesUpdated} status-fixes${result.warnings ? `, ${result.warnings} warnings` : ''}`,
         };
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);

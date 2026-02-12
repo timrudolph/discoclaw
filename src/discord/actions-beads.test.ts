@@ -57,6 +57,7 @@ vi.mock('../beads/discord-sync.js', () => ({
   closeBeadThread: vi.fn(async () => {}),
   updateBeadThreadName: vi.fn(async () => {}),
   updateBeadStarterMessage: vi.fn(async () => true),
+  updateBeadThreadTags: vi.fn(async () => false),
   ensureUnarchived: vi.fn(async () => {}),
   getThreadIdFromBead: vi.fn((bead: any) => {
     const ref = bead.external_ref ?? '';
@@ -77,6 +78,7 @@ vi.mock('../beads/bead-sync.js', () => ({
     starterMessagesUpdated: 5,
     threadsArchived: 3,
     statusesUpdated: 4,
+    tagsUpdated: 0,
     warnings: 0,
   })),
 }));
@@ -264,6 +266,41 @@ describe('executeBeadAction', () => {
       makeBeadCtx(),
     );
     expect(result.ok).toBe(true);
+  });
+
+  it('beadUpdate calls updateBeadThreadTags when bead has a linked thread', async () => {
+    const { updateBeadThreadTags } = await import('../beads/discord-sync.js');
+    (updateBeadThreadTags as any).mockClear();
+
+    await executeBeadAction(
+      { type: 'beadUpdate', beadId: 'ws-001', status: 'in_progress' },
+      makeCtx(),
+      makeBeadCtx(),
+    );
+    expect(updateBeadThreadTags).toHaveBeenCalledWith(
+      expect.anything(),
+      '111222333',
+      expect.objectContaining({ id: 'ws-001' }),
+      expect.objectContaining({ feature: 'tag-1' }),
+    );
+  });
+
+  it('beadClose passes tagMap to closeBeadThread', async () => {
+    const { closeBeadThread } = await import('../beads/discord-sync.js');
+    (closeBeadThread as any).mockClear();
+
+    const beadCtx = makeBeadCtx();
+    await executeBeadAction(
+      { type: 'beadClose', beadId: 'ws-001', reason: 'Done' },
+      makeCtx(),
+      beadCtx,
+    );
+    expect(closeBeadThread).toHaveBeenCalledWith(
+      expect.anything(),
+      '111222333',
+      expect.objectContaining({ id: 'ws-001' }),
+      beadCtx.tagMap,
+    );
   });
 
   it('beadUpdate rejects invalid status', async () => {
