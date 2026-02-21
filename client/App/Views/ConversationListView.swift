@@ -7,6 +7,7 @@ struct ConversationListView: View {
     let onNewChat: () -> Void
     let api: APIClient
     @Binding var sidebarMode: SidebarMode
+    let isTabContext: Bool
     @StateObject private var viewModel: ConversationListViewModel
     @EnvironmentObject private var syncEngine: SyncEngine
 
@@ -22,10 +23,11 @@ struct ConversationListView: View {
 
     @AppStorage("appearance") private var appearance = "auto"
 
-    init(selectedId: Binding<String?>, repo: ConversationRepository, messageRepo: MessageRepository, api: APIClient, sidebarMode: Binding<SidebarMode>, onNewChat: @escaping () -> Void, onSignOut: @escaping () -> Void) {
+    init(selectedId: Binding<String?>, repo: ConversationRepository, messageRepo: MessageRepository, api: APIClient, sidebarMode: Binding<SidebarMode>, isTabContext: Bool = false, onNewChat: @escaping () -> Void, onSignOut: @escaping () -> Void) {
         _selectedId = selectedId
         self.api = api
         _sidebarMode = sidebarMode
+        self.isTabContext = isTabContext
         _viewModel = StateObject(wrappedValue: ConversationListViewModel(repo: repo, messageRepo: messageRepo, api: api))
         self.onNewChat = onNewChat
         self.onSignOut = onSignOut
@@ -42,33 +44,24 @@ struct ConversationListView: View {
         List(selection: $selectedId) {
             // Conversation title matches
             ForEach(filteredConversations) { conversation in
-                ConversationRow(
-                    conversation: conversation,
-                    lastMessage: viewModel.lastMessages[conversation.id]
-                )
-                .tag(conversation.id)
-                .swipeActions(edge: .trailing, allowsFullSwipe: !conversation.isProtected) {
-                    if !conversation.isProtected {
-                        if conversation.isArchived {
-                            Button {
-                                Task { await viewModel.unarchive(conversation) }
-                            } label: {
-                                Label("Unarchive", systemImage: "tray.and.arrow.up")
-                            }
-                            .tint(.blue)
-                        } else {
-                            Button {
-                                Task { await viewModel.archive(conversation) }
-                            } label: {
-                                Label("Archive", systemImage: "archivebox")
-                            }
-                            .tint(.orange)
-                        }
-                        Button(role: .destructive) {
-                            Task { await viewModel.delete(conversation) }
-                        } label: {
-                            Label("Delete", systemImage: "trash")
-                        }
+                if isTabContext {
+                    NavigationLink(value: conversation.id) {
+                        ConversationRow(
+                            conversation: conversation,
+                            lastMessage: viewModel.lastMessages[conversation.id]
+                        )
+                    }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: !conversation.isProtected) {
+                        conversationSwipeActions(for: conversation)
+                    }
+                } else {
+                    ConversationRow(
+                        conversation: conversation,
+                        lastMessage: viewModel.lastMessages[conversation.id]
+                    )
+                    .tag(conversation.id)
+                    .swipeActions(edge: .trailing, allowsFullSwipe: !conversation.isProtected) {
+                        conversationSwipeActions(for: conversation)
                     }
                 }
             }
@@ -195,6 +188,34 @@ struct ConversationListView: View {
         }
     }
 
+    // MARK: - Swipe actions
+
+    @ViewBuilder
+    private func conversationSwipeActions(for conversation: Conversation) -> some View {
+        if !conversation.isProtected {
+            if conversation.isArchived {
+                Button {
+                    Task { await viewModel.unarchive(conversation) }
+                } label: {
+                    Label("Unarchive", systemImage: "tray.and.arrow.up")
+                }
+                .tint(.blue)
+            } else {
+                Button {
+                    Task { await viewModel.archive(conversation) }
+                } label: {
+                    Label("Archive", systemImage: "archivebox")
+                }
+                .tint(.orange)
+            }
+            Button(role: .destructive) {
+                Task { await viewModel.delete(conversation) }
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+        }
+    }
+
     // MARK: - Message search
 
     private func performMessageSearch(query: String) async {
@@ -238,26 +259,28 @@ struct ConversationListView: View {
             }
             Divider()
             HStack(spacing: 4) {
-                // Chats tab — active
-                Button {} label: {
-                    Label("Chats", systemImage: "bubble.left.and.bubble.right.fill")
-                        .font(.caption.weight(.semibold))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(.tint.opacity(0.12), in: Capsule())
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.tint)
+                if !isTabContext {
+                    // Chats tab — active
+                    Button {} label: {
+                        Label("Chats", systemImage: "bubble.left.and.bubble.right.fill")
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(.tint.opacity(0.12), in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.tint)
 
-                // Beads tab — inactive
-                Button { sidebarMode = .beads } label: {
-                    Label("Beads", systemImage: "checkmark.circle")
-                        .font(.caption.weight(.semibold))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
+                    // Beads tab — inactive
+                    Button { sidebarMode = .beads } label: {
+                        Label("Beads", systemImage: "checkmark.circle")
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
 
                 Spacer()
 

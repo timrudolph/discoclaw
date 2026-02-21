@@ -5,6 +5,7 @@ struct BeadsListView: View {
     @Binding var selectedId: String?
     let api: APIClient
     @Binding var sidebarMode: SidebarMode
+    var isTabContext: Bool = false
     @EnvironmentObject private var syncEngine: SyncEngine
 
     @State private var beads: [Bead] = []
@@ -22,8 +23,14 @@ struct BeadsListView: View {
 
     var body: some View {
         List(beads, selection: $selectedId) { bead in
-            BeadRow(bead: bead)
-                .tag(bead.id)
+            if isTabContext {
+                NavigationLink(value: bead.id) {
+                    BeadRow(bead: bead)
+                }
+            } else {
+                BeadRow(bead: bead)
+                    .tag(bead.id)
+            }
         }
         .listStyle(.sidebar)
         .navigationTitle("Beads")
@@ -47,29 +54,31 @@ struct BeadsListView: View {
                     }
                     .pickerStyle(.segmented)
 
-                    HStack(spacing: 4) {
-                        // Chats tab — inactive
-                        Button { sidebarMode = .chats } label: {
-                            Label("Chats", systemImage: "bubble.left.and.bubble.right")
-                                .font(.caption.weight(.semibold))
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.secondary)
+                    if !isTabContext {
+                        HStack(spacing: 4) {
+                            // Chats tab — inactive
+                            Button { sidebarMode = .chats } label: {
+                                Label("Chats", systemImage: "bubble.left.and.bubble.right")
+                                    .font(.caption.weight(.semibold))
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.secondary)
 
-                        // Beads tab — active
-                        Button {} label: {
-                            Label("Beads", systemImage: "checkmark.circle.fill")
-                                .font(.caption.weight(.semibold))
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(.tint.opacity(0.12), in: Capsule())
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.tint)
+                            // Beads tab — active
+                            Button {} label: {
+                                Label("Beads", systemImage: "checkmark.circle.fill")
+                                    .font(.caption.weight(.semibold))
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                                    .background(.tint.opacity(0.12), in: Capsule())
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.tint)
 
-                        Spacer()
+                            Spacer()
+                        }
                     }
                 }
                 .padding(.horizontal, 14)

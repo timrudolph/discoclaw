@@ -1,26 +1,34 @@
 import SwiftUI
+#if os(macOS)
 import AppKit
+#endif
 import ClawClient
 
 @main
 struct ClawApp: App {
+    #if os(macOS)
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    #endif
 
     var body: some Scene {
         WindowGroup {
             AppRootView()
         }
+        #if os(macOS)
         Settings {
             SettingsView()
         }
+        #endif
     }
 }
 
+#if os(macOS)
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         true
     }
 }
+#endif
 
 enum SidebarMode {
     case chats, beads
@@ -33,6 +41,9 @@ struct AppRootView: View {
     }()
 
     @Environment(\.scenePhase) private var scenePhase
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    #endif
 
     @State private var sidebarMode: SidebarMode = .chats
 
@@ -58,108 +69,15 @@ struct AppRootView: View {
 
     var body: some View {
         if let container {
-            NavigationSplitView {
-                Group {
-                    switch sidebarMode {
-                    case .chats:
-                        ConversationListView(
-                            selectedId: $selectedConversationId,
-                            repo: container.conversationRepo,
-                            messageRepo: container.messageRepo,
-                            api: container.api,
-                            sidebarMode: $sidebarMode,
-                            onNewChat: { showingNewConversation = true },
-                            onSignOut: {
-                                container.syncEngine.stop()
-                                SessionConfig.clear()
-                                SyncCursor.reset()
-                                AppDatabase.destroy()
-                                selectedConversationId = nil
-                                selectedConversation = nil
-                                self.container = nil
-                            }
-                        )
-                    case .beads:
-                        BeadsListView(
-                            selectedId: $selectedBeadId,
-                            api: container.api,
-                            sidebarMode: $sidebarMode
-                        )
-                    }
-                }
-            } detail: {
-                switch sidebarMode {
-                case .chats:
-                    if let id = selectedConversationId {
-                        ChatView(
-                            conversationId: id,
-                            conversation: selectedConversation,
-                            messageRepo: container.messageRepo,
-                            api: container.api
-                        )
-                        .id(id)
-                    } else {
-                        ContentUnavailableView(
-                            "No Conversation",
-                            systemImage: "bubble.left.and.bubble.right",
-                            description: Text("Select a conversation or tap the compose button to start one.")
-                        )
-                    }
-                case .beads:
-                    if let id = selectedBeadId {
-                        BeadDetailView(beadId: id, api: container.api) { updated in
-                            selectedBead = updated
-                        }
-                        .id(id)
-                    } else {
-                        ContentUnavailableView(
-                            "No Bead Selected",
-                            systemImage: "checkmark.circle",
-                            description: Text("Select a bead from the list.")
-                        )
-                    }
-                }
+            #if os(macOS)
+            splitView(container: container)
+            #else
+            if sizeClass == .compact {
+                iPhoneTabView(container: container)
+            } else {
+                splitView(container: container)
             }
-            .environmentObject(container.syncEngine)
-            .toolbar {
-                if sidebarMode == .chats {
-                    ToolbarItem(placement: .primaryAction) {
-                        Button { showingNewConversation = true } label: {
-                            Label("New Chat", systemImage: "square.and.pencil")
-                        }
-                    }
-                }
-            }
-            .sheet(isPresented: $showingNewConversation) {
-                NewConversationView(
-                    api: container.api,
-                    onCreate: { id in selectedConversationId = id },
-                    create: { title, modules, memory in
-                        await makeConversation(container: container, title: title, modules: modules, memory: memory)
-                    }
-                )
-            }
-            .task {
-                await container.syncEngine.start()
-                if selectedConversationId == nil {
-                    if let general = try? await container.conversationRepo.firstProtected() {
-                        selectedConversationId = general.id
-                    }
-                }
-            }
-            .onChange(of: scenePhase) { _, phase in
-                if phase == .active {
-                    Task { await container.syncEngine.reconnectIfNeeded() }
-                }
-            }
-            .task(id: selectedConversationId) {
-                guard let id = selectedConversationId else { selectedConversation = nil; return }
-                // Observe live so title updates (renames) propagate to the nav bar immediately.
-                for await conv in container.conversationRepo.observe(id: id).values {
-                    selectedConversation = conv
-                }
-            }
-            .preferredColorScheme(preferredScheme)
+            #endif
         } else {
             OnboardingView { newSession in
                 newSession.save()
@@ -167,6 +85,199 @@ struct AppRootView: View {
             }
         }
     }
+
+    // MARK: - Split view (macOS + iPad)
+
+    @ViewBuilder
+    private func splitView(container: AppContainer) -> some View {
+        NavigationSplitView {
+            Group {
+                switch sidebarMode {
+                case .chats:
+                    ConversationListView(
+                        selectedId: $selectedConversationId,
+                        repo: container.conversationRepo,
+                        messageRepo: container.messageRepo,
+                        api: container.api,
+                        sidebarMode: $sidebarMode,
+                        onNewChat: { showingNewConversation = true },
+                        onSignOut: {
+                            container.syncEngine.stop()
+                            SessionConfig.clear()
+                            SyncCursor.reset()
+                            AppDatabase.destroy()
+                            selectedConversationId = nil
+                            selectedConversation = nil
+                            self.container = nil
+                        }
+                    )
+                case .beads:
+                    BeadsListView(
+                        selectedId: $selectedBeadId,
+                        api: container.api,
+                        sidebarMode: $sidebarMode
+                    )
+                }
+            }
+        } detail: {
+            switch sidebarMode {
+            case .chats:
+                if let id = selectedConversationId {
+                    ChatView(
+                        conversationId: id,
+                        conversation: selectedConversation,
+                        messageRepo: container.messageRepo,
+                        api: container.api
+                    )
+                    .id(id)
+                } else {
+                    ContentUnavailableView(
+                        "No Conversation",
+                        systemImage: "bubble.left.and.bubble.right",
+                        description: Text("Select a conversation or tap the compose button to start one.")
+                    )
+                }
+            case .beads:
+                if let id = selectedBeadId {
+                    BeadDetailView(beadId: id, api: container.api) { updated in
+                        selectedBead = updated
+                    }
+                    .id(id)
+                } else {
+                    ContentUnavailableView(
+                        "No Bead Selected",
+                        systemImage: "checkmark.circle",
+                        description: Text("Select a bead from the list.")
+                    )
+                }
+            }
+        }
+        .environmentObject(container.syncEngine)
+        .toolbar {
+            if sidebarMode == .chats {
+                ToolbarItem(placement: .primaryAction) {
+                    Button { showingNewConversation = true } label: {
+                        Label("New Chat", systemImage: "square.and.pencil")
+                    }
+                }
+            }
+        }
+        .sheet(isPresented: $showingNewConversation) {
+            NewConversationView(
+                api: container.api,
+                onCreate: { id in selectedConversationId = id },
+                create: { title, modules, memory in
+                    await makeConversation(container: container, title: title, modules: modules, memory: memory)
+                }
+            )
+        }
+        .task {
+            await container.syncEngine.start()
+            if selectedConversationId == nil {
+                if let general = try? await container.conversationRepo.firstProtected() {
+                    selectedConversationId = general.id
+                }
+            }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                Task { await container.syncEngine.reconnectIfNeeded() }
+            }
+        }
+        .task(id: selectedConversationId) {
+            guard let id = selectedConversationId else { selectedConversation = nil; return }
+            for await conv in container.conversationRepo.observe(id: id).values {
+                selectedConversation = conv
+            }
+        }
+        .preferredColorScheme(preferredScheme)
+    }
+
+    // MARK: - Tab view (iPhone compact)
+
+    #if os(iOS)
+    @ViewBuilder
+    private func iPhoneTabView(container: AppContainer) -> some View {
+        TabView {
+            NavigationStack {
+                ConversationListView(
+                    selectedId: $selectedConversationId,
+                    repo: container.conversationRepo,
+                    messageRepo: container.messageRepo,
+                    api: container.api,
+                    sidebarMode: $sidebarMode,
+                    isTabContext: true,
+                    onNewChat: { showingNewConversation = true },
+                    onSignOut: {
+                        container.syncEngine.stop()
+                        SessionConfig.clear()
+                        SyncCursor.reset()
+                        AppDatabase.destroy()
+                        selectedConversationId = nil
+                        selectedConversation = nil
+                        self.container = nil
+                    }
+                )
+                .navigationDestination(for: String.self) { id in
+                    ChatView(
+                        conversationId: id,
+                        conversation: id == selectedConversationId ? selectedConversation : nil,
+                        messageRepo: container.messageRepo,
+                        api: container.api
+                    )
+                }
+            }
+            .tabItem { Label("Chats", systemImage: "bubble.left.and.bubble.right") }
+
+            NavigationStack {
+                BeadsListView(
+                    selectedId: $selectedBeadId,
+                    api: container.api,
+                    sidebarMode: $sidebarMode,
+                    isTabContext: true
+                )
+                .navigationDestination(for: String.self) { id in
+                    BeadDetailView(beadId: id, api: container.api) { updated in
+                        selectedBead = updated
+                    }
+                }
+            }
+            .tabItem { Label("Beads", systemImage: "checkmark.circle") }
+        }
+        .sheet(isPresented: $showingNewConversation) {
+            NewConversationView(
+                api: container.api,
+                onCreate: { id in selectedConversationId = id },
+                create: { title, modules, memory in
+                    await makeConversation(container: container, title: title, modules: modules, memory: memory)
+                }
+            )
+        }
+        .environmentObject(container.syncEngine)
+        .task {
+            await container.syncEngine.start()
+            if selectedConversationId == nil {
+                if let general = try? await container.conversationRepo.firstProtected() {
+                    selectedConversationId = general.id
+                }
+            }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                Task { await container.syncEngine.reconnectIfNeeded() }
+            }
+        }
+        .task(id: selectedConversationId) {
+            guard let id = selectedConversationId else { selectedConversation = nil; return }
+            for await conv in container.conversationRepo.observe(id: id).values {
+                selectedConversation = conv
+            }
+        }
+        .preferredColorScheme(preferredScheme)
+    }
+    #endif
+
+    // MARK: - Helpers
 
     private func makeConversation(container: AppContainer, title: String?, modules: [String], memory: String?) async -> String? {
         do {

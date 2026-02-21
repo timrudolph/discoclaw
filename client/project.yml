@@ -1,0 +1,62 @@
+name: ClawApp
+options:
+  bundleIdPrefix: com.nimblebit
+  deploymentTarget:
+    macOS: "14.0"
+    iOS: "17.0"
+  xcodeVersion: "16"
+  createIntermediateGroups: true
+
+packages:
+  ClawClient:
+    path: .
+  swift-markdown-ui:
+    url: https://github.com/gonzalezreal/swift-markdown-ui
+    from: "2.0.0"
+
+targets:
+  ClawApp:
+    type: application
+    platform: macOS
+    sources:
+      - path: App
+        excludes:
+          - README.md
+    dependencies:
+      - package: ClawClient
+        product: ClawClient
+      - package: swift-markdown-ui
+        product: MarkdownUI
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.nimblebit.ClawApp
+        SWIFT_VERSION: "5.9"
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        CODE_SIGN_STYLE: Automatic
+        ENABLE_HARDENED_RUNTIME: YES
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_NSHumanReadableCopyright: ""
+        CODE_SIGN_ENTITLEMENTS: ClawApp.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+
+  ClawApp-iOS:
+    type: application
+    platform: iOS
+    sources:
+      - path: App
+        excludes:
+          - README.md
+    dependencies:
+      - package: ClawClient
+        product: ClawClient
+      - package: swift-markdown-ui
+        product: MarkdownUI
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.nimblebit.ClawApp
+        SWIFT_VERSION: "5.9"
+        IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+        CODE_SIGN_STYLE: Automatic
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_NSHumanReadableCopyright: ""
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon

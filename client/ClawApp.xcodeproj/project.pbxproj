@@ -9,28 +9,52 @@
 /* Begin PBXBuildFile section */
 		020E7862331BF3076F957319 /* MessageBubbleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61685FA9567255082EFD5BF6 /* MessageBubbleView.swift */; };
 		1164F093523779D6F831E679 /* ClawClient in Frameworks */ = {isa = PBXBuildFile; productRef = FF65D1B0F09DCF980BE7070C /* ClawClient */; };
+		128D4376BFB40E79AA59C472 /* BeadsListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51F1048F06D783E9CF10FB89 /* BeadsListView.swift */; };
 		14408ADDC22FA9D0703608AB /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0BF0698BEE02DBDB3C26AB7 /* ChatView.swift */; };
 		18D2092221A0997ACECC51AD /* AppContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1430C3A87B4E6AB18F3A7F7F /* AppContainer.swift */; };
 		1DAB1917ADEDD273C8A86E80 /* ContextModulesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72B6AB9360B626D6E5B26399 /* ContextModulesView.swift */; };
+		20C86BD931AAAD41F51083C1 /* NewConversationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B7CD556CCE0EC230309F915 /* NewConversationView.swift */; };
+		25E81D0678B47F4F6F847899 /* DeviceManagementView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1377536B5B2206A8B0C0515A /* DeviceManagementView.swift */; };
 		2D629908AE40284B33E29487 /* BeadsListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51F1048F06D783E9CF10FB89 /* BeadsListView.swift */; };
 		2EFEB81CA7B9FF8583FE928A /* CronJobsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0555F8954B21D1DAD3663E7 /* CronJobsView.swift */; };
+		2F2903383DD27E8F03E6973C /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3C5130915B2B12D721BD5E0 /* SettingsView.swift */; };
 		2F63225FF8DFA41C434B88FC /* DeviceManagementView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1377536B5B2206A8B0C0515A /* DeviceManagementView.swift */; };
 		31AB099F4195251A659273B8 /* BeadDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0CCF667C98A32EDDBF20316 /* BeadDetailView.swift */; };
+		3912EC7C6C60E28AA5BBDF13 /* MarkdownUI in Frameworks */ = {isa = PBXBuildFile; productRef = 06358C79ED327784D384194C /* MarkdownUI */; };
 		55858DDA12E759AD3597B0D1 /* ConversationListViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01AE2C1CC1EE1C6694891EB8 /* ConversationListViewModel.swift */; };
+		566DB178CB32D8AD9AC991DE /* ComposeBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EED52C92700063DD1CA4D339 /* ComposeBarView.swift */; };
+		670903EDB075623214A175DC /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 024E3212775193FCB67D67A6 /* OnboardingView.swift */; };
+		688A060F6D03A8484C6E34D8 /* PersonaEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48F52D40BFE69395C36D53C2 /* PersonaEditorView.swift */; };
+		690157192AD7B7099D1A3DE5 /* MemoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 528E51EF0DD67ABAC2656785 /* MemoryView.swift */; };
+		7790CC33CE34BCF97B431274 /* ClawClient in Frameworks */ = {isa = PBXBuildFile; productRef = 1AE3A85AD980A9F8C9DDD799 /* ClawClient */; };
+		78CC54E81D00B2C8195F89BA /* ChatViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF7BA1AC1C5B75E1556BDED1 /* ChatViewModel.swift */; };
+		825D94EC2DE103FC7671DBB1 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3C5130915B2B12D721BD5E0 /* SettingsView.swift */; };
 		878287EC153283812FA33E86 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9B50C1A52E9662980E49C512 /* Assets.xcassets */; };
+		8A74E3871490322B263B89BD /* ClawApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B8660B86D10F3F558EBD32D /* ClawApp.swift */; };
+		8BB03DB5732D64190C3C2578 /* ContextModulesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72B6AB9360B626D6E5B26399 /* ContextModulesView.swift */; };
+		9D1C38042C4D97189FB12C23 /* ConversationListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7FD474AED8A5B9749A29F7F /* ConversationListView.swift */; };
+		A153C8383DBC2766E3DCFA71 /* BeadDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0CCF667C98A32EDDBF20316 /* BeadDetailView.swift */; };
+		A1D90B23EA55BD48CA7F7DFD /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0BF0698BEE02DBDB3C26AB7 /* ChatView.swift */; };
 		A5F06F0425FEF079CC582891 /* MemoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 528E51EF0DD67ABAC2656785 /* MemoryView.swift */; };
+		AA61125594BAA8CA2E141023 /* MessageBubbleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61685FA9567255082EFD5BF6 /* MessageBubbleView.swift */; };
 		B8ED916673930B4809BFB223 /* ConversationListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7FD474AED8A5B9749A29F7F /* ConversationListView.swift */; };
 		BA05E389AAF123FE4A9275BE /* ToolActivityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB2321F3694E1D8919C0564D /* ToolActivityView.swift */; };
 		C2E37C7F8092A0FC9B2544B7 /* CodeHighlighter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D22CF964A0C25E240AAA600 /* CodeHighlighter.swift */; };
+		CA9EAA34EFE9056A5EB5E4D6 /* ConversationListViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01AE2C1CC1EE1C6694891EB8 /* ConversationListViewModel.swift */; };
+		D1B42352AE13A199CF08BD29 /* CodeHighlighter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D22CF964A0C25E240AAA600 /* CodeHighlighter.swift */; };
 		D638E50F42E52BD40B3BC6BB /* NewConversationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B7CD556CCE0EC230309F915 /* NewConversationView.swift */; };
 		DE7186A9624DB45CD0CEF8D3 /* PersonaEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48F52D40BFE69395C36D53C2 /* PersonaEditorView.swift */; };
+		DFF878232350D4D5E48B16D2 /* CronJobsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0555F8954B21D1DAD3663E7 /* CronJobsView.swift */; };
 		E4D82FFF2B58AAEE8389E9C4 /* ChatViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF7BA1AC1C5B75E1556BDED1 /* ChatViewModel.swift */; };
 		E934BB6E7AB715F64BC8F0FD /* ClawApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B8660B86D10F3F558EBD32D /* ClawApp.swift */; };
 		E939CFFA0259D2196F5EB2DB /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 024E3212775193FCB67D67A6 /* OnboardingView.swift */; };
+		EA1E43E301E5FC494A89948D /* ToolActivityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB2321F3694E1D8919C0564D /* ToolActivityView.swift */; };
 		EE54F392D29A4BD00125D515 /* MarkdownUI in Frameworks */ = {isa = PBXBuildFile; productRef = 8E24E121065FD5BFE33B91F3 /* MarkdownUI */; };
+		EF0F73F4FC9BB5BD060E1560 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9B50C1A52E9662980E49C512 /* Assets.xcassets */; };
+		F194B424388D1819FF8C2B0A /* WorkspaceFilesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80798ABB8A1B816396AFE0C6 /* WorkspaceFilesView.swift */; };
 		F1C69F91DDFC61B2AE35F57C /* ComposeBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EED52C92700063DD1CA4D339 /* ComposeBarView.swift */; };
+		F55303AB0E0E7900A0EFFE68 /* AppContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1430C3A87B4E6AB18F3A7F7F /* AppContainer.swift */; };
 		F5827DC65474AFBD27009913 /* WorkspaceFilesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80798ABB8A1B816396AFE0C6 /* WorkspaceFilesView.swift */; };
-		10F63BDCA12946F6AA76F48C /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DEC4E2DC31A4F5699028142 /* SettingsView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -42,18 +66,19 @@
 		48F52D40BFE69395C36D53C2 /* PersonaEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonaEditorView.swift; sourceTree = "<group>"; };
 		51F1048F06D783E9CF10FB89 /* BeadsListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BeadsListView.swift; sourceTree = "<group>"; };
 		528E51EF0DD67ABAC2656785 /* MemoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryView.swift; sourceTree = "<group>"; };
+		60B2DA01C6A86FBE68D3739D /* ClawApp-iOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = "ClawApp-iOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		61685FA9567255082EFD5BF6 /* MessageBubbleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageBubbleView.swift; sourceTree = "<group>"; };
 		6D22CF964A0C25E240AAA600 /* CodeHighlighter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeHighlighter.swift; sourceTree = "<group>"; };
 		72B6AB9360B626D6E5B26399 /* ContextModulesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextModulesView.swift; sourceTree = "<group>"; };
 		7B8660B86D10F3F558EBD32D /* ClawApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClawApp.swift; sourceTree = "<group>"; };
 		80798ABB8A1B816396AFE0C6 /* WorkspaceFilesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceFilesView.swift; sourceTree = "<group>"; };
-		2DEC4E2DC31A4F5699028142 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		969B8CC38CF90D8F7E1B0E24 /* ClawApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ClawApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		9B50C1A52E9662980E49C512 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		9B7CD556CCE0EC230309F915 /* NewConversationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewConversationView.swift; sourceTree = "<group>"; };
 		A0CCF667C98A32EDDBF20316 /* BeadDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BeadDetailView.swift; sourceTree = "<group>"; };
 		B0555F8954B21D1DAD3663E7 /* CronJobsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CronJobsView.swift; sourceTree = "<group>"; };
 		B0BF0698BEE02DBDB3C26AB7 /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
+		E3C5130915B2B12D721BD5E0 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		E7FD474AED8A5B9749A29F7F /* ConversationListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationListView.swift; sourceTree = "<group>"; };
 		EED52C92700063DD1CA4D339 /* ComposeBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposeBarView.swift; sourceTree = "<group>"; };
 		EF7BA1AC1C5B75E1556BDED1 /* ChatViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatViewModel.swift; sourceTree = "<group>"; };
@@ -67,6 +92,15 @@
 			files = (
 				1164F093523779D6F831E679 /* ClawClient in Frameworks */,
 				EE54F392D29A4BD00125D515 /* MarkdownUI in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		6A8160F7AA25562ADD3E98D0 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7790CC33CE34BCF97B431274 /* ClawClient in Frameworks */,
+				3912EC7C6C60E28AA5BBDF13 /* MarkdownUI in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -115,9 +149,9 @@
 				9B7CD556CCE0EC230309F915 /* NewConversationView.swift */,
 				024E3212775193FCB67D67A6 /* OnboardingView.swift */,
 				48F52D40BFE69395C36D53C2 /* PersonaEditorView.swift */,
+				E3C5130915B2B12D721BD5E0 /* SettingsView.swift */,
 				FB2321F3694E1D8919C0564D /* ToolActivityView.swift */,
 				80798ABB8A1B816396AFE0C6 /* WorkspaceFilesView.swift */,
-				2DEC4E2DC31A4F5699028142 /* SettingsView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -125,6 +159,7 @@
 		D8D27B17F009281B2C1C5412 /* Products */ = {
 			isa = PBXGroup;
 			children = (
+				60B2DA01C6A86FBE68D3739D /* ClawApp-iOS.app */,
 				969B8CC38CF90D8F7E1B0E24 /* ClawApp.app */,
 			);
 			name = Products;
@@ -154,6 +189,27 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		22A03241D05181BD7BA94613 /* ClawApp-iOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 77B6F625B0238B78AB27AA88 /* Build configuration list for PBXNativeTarget "ClawApp-iOS" */;
+			buildPhases = (
+				B4FE9FF13EC91CCA4B7711AC /* Sources */,
+				FFDE9C6C3839CB29C758BC43 /* Resources */,
+				6A8160F7AA25562ADD3E98D0 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "ClawApp-iOS";
+			packageProductDependencies = (
+				1AE3A85AD980A9F8C9DDD799 /* ClawClient */,
+				06358C79ED327784D384194C /* MarkdownUI */,
+			);
+			productName = "ClawApp-iOS";
+			productReference = 60B2DA01C6A86FBE68D3739D /* ClawApp-iOS.app */;
+			productType = "com.apple.product-type.application";
+		};
 		6FA272C13418F55321E86681 /* ClawApp */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = C4F9070867543B42259385CC /* Build configuration list for PBXNativeTarget "ClawApp" */;
@@ -184,6 +240,9 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1600;
 				TargetAttributes = {
+					22A03241D05181BD7BA94613 = {
+						ProvisioningStyle = Automatic;
+					};
 					6FA272C13418F55321E86681 = {
 						ProvisioningStyle = Automatic;
 					};
@@ -208,6 +267,7 @@
 			projectRoot = "";
 			targets = (
 				6FA272C13418F55321E86681 /* ClawApp */,
+				22A03241D05181BD7BA94613 /* ClawApp-iOS */,
 			);
 		};
 /* End PBXProject section */
@@ -218,6 +278,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				878287EC153283812FA33E86 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		FFDE9C6C3839CB29C758BC43 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				EF0F73F4FC9BB5BD060E1560 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -246,15 +314,83 @@
 				D638E50F42E52BD40B3BC6BB /* NewConversationView.swift in Sources */,
 				E939CFFA0259D2196F5EB2DB /* OnboardingView.swift in Sources */,
 				DE7186A9624DB45CD0CEF8D3 /* PersonaEditorView.swift in Sources */,
+				2F2903383DD27E8F03E6973C /* SettingsView.swift in Sources */,
 				BA05E389AAF123FE4A9275BE /* ToolActivityView.swift in Sources */,
 				F5827DC65474AFBD27009913 /* WorkspaceFilesView.swift in Sources */,
-				10F63BDCA12946F6AA76F48C /* SettingsView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B4FE9FF13EC91CCA4B7711AC /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F55303AB0E0E7900A0EFFE68 /* AppContainer.swift in Sources */,
+				A153C8383DBC2766E3DCFA71 /* BeadDetailView.swift in Sources */,
+				128D4376BFB40E79AA59C472 /* BeadsListView.swift in Sources */,
+				A1D90B23EA55BD48CA7F7DFD /* ChatView.swift in Sources */,
+				78CC54E81D00B2C8195F89BA /* ChatViewModel.swift in Sources */,
+				8A74E3871490322B263B89BD /* ClawApp.swift in Sources */,
+				D1B42352AE13A199CF08BD29 /* CodeHighlighter.swift in Sources */,
+				566DB178CB32D8AD9AC991DE /* ComposeBarView.swift in Sources */,
+				8BB03DB5732D64190C3C2578 /* ContextModulesView.swift in Sources */,
+				9D1C38042C4D97189FB12C23 /* ConversationListView.swift in Sources */,
+				CA9EAA34EFE9056A5EB5E4D6 /* ConversationListViewModel.swift in Sources */,
+				DFF878232350D4D5E48B16D2 /* CronJobsView.swift in Sources */,
+				25E81D0678B47F4F6F847899 /* DeviceManagementView.swift in Sources */,
+				690157192AD7B7099D1A3DE5 /* MemoryView.swift in Sources */,
+				AA61125594BAA8CA2E141023 /* MessageBubbleView.swift in Sources */,
+				20C86BD931AAAD41F51083C1 /* NewConversationView.swift in Sources */,
+				670903EDB075623214A175DC /* OnboardingView.swift in Sources */,
+				688A060F6D03A8484C6E34D8 /* PersonaEditorView.swift in Sources */,
+				825D94EC2DE103FC7671DBB1 /* SettingsView.swift in Sources */,
+				EA1E43E301E5FC494A89948D /* ToolActivityView.swift in Sources */,
+				F194B424388D1819FF8C2B0A /* WorkspaceFilesView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
+		209B99D3F7CBED6D79C41A89 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.nimblebit.ClawApp;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		28519B50F31DEDF642D5EB7D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.nimblebit.ClawApp;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 		4998452DB5247954EAAC081A /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -327,12 +463,12 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SDKROOT = macosx;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
@@ -405,11 +541,11 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SDKROOT = macosx;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 5.0;
@@ -424,6 +560,15 @@
 			buildConfigurations = (
 				7BED8EAFC03D8EA47F8C829D /* Debug */,
 				EE9DAF4FF43812FD0AF608FA /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		77B6F625B0238B78AB27AA88 /* Build configuration list for PBXNativeTarget "ClawApp-iOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				209B99D3F7CBED6D79C41A89 /* Debug */,
+				28519B50F31DEDF642D5EB7D /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
@@ -458,6 +603,15 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		06358C79ED327784D384194C /* MarkdownUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 819B47D566258561606874B4 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */;
+			productName = MarkdownUI;
+		};
+		1AE3A85AD980A9F8C9DDD799 /* ClawClient */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = ClawClient;
+		};
 		8E24E121065FD5BFE33B91F3 /* MarkdownUI */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 819B47D566258561606874B4 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */;
