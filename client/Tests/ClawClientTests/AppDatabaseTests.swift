@@ -148,6 +148,64 @@ final class AppDatabaseTests: XCTestCase {
         let found = try await messages.findByClientId("my-client-id")
         XCTAssertEqual(found?.id, "temp-1")
     }
+
+    // MARK: - Race condition fixes
+
+    /// setError creates a new error row if none exists (WS event before placeholder saved).
+    func testSetErrorCreatesRowWhenAbsent() async throws {
+        try await conversations.save(makeConversation(id: "c1"))
+
+        try await messages.setError(id: "a1", conversationId: "c1", error: "timeout")
+
+        let fetched = try await messages.fetch(id: "a1")
+        XCTAssertNotNil(fetched)
+        XCTAssertEqual(fetched?.status, .error)
+        XCTAssertEqual(fetched?.error, "timeout")
+        XCTAssertEqual(fetched?.role, .assistant)
+    }
+
+    /// setError updates an existing row to error state (WS event after placeholder saved).
+    func testSetErrorUpdatesExistingRow() async throws {
+        try await conversations.save(makeConversation(id: "c1"))
+        try await messages.save(makeMessage(id: "a1", conversationId: "c1", seq: 5,
+                                            content: "partial", role: .assistant, status: .streaming))
+
+        try await messages.setError(id: "a1", conversationId: "c1", error: "crash")
+
+        let fetched = try await messages.fetch(id: "a1")
+        XCTAssertEqual(fetched?.status, .error)
+        XCTAssertEqual(fetched?.error, "crash")
+        // Content should be preserved
+        XCTAssertEqual(fetched?.content, "partial")
+    }
+
+    /// saveIfAbsent inserts a row only when none exists.
+    func testSaveIfAbsentInsertsWhenMissing() async throws {
+        try await conversations.save(makeConversation(id: "c1"))
+        let placeholder = makeMessage(id: "a1", conversationId: "c1", seq: 2,
+                                      content: "", role: .assistant, status: .streaming)
+
+        try await messages.saveIfAbsent(placeholder)
+
+        let fetched = try await messages.fetch(id: "a1")
+        XCTAssertEqual(fetched?.status, .streaming)
+    }
+
+    /// saveIfAbsent does not overwrite an existing row — the error flash fix.
+    func testSaveIfAbsentDoesNotOverwriteError() async throws {
+        try await conversations.save(makeConversation(id: "c1"))
+        // WS error event arrives first — row established as error
+        try await messages.setError(id: "a1", conversationId: "c1", error: "runtime failed")
+
+        // Placeholder arrives late — should be ignored
+        let placeholder = makeMessage(id: "a1", conversationId: "c1", seq: 2,
+                                      content: "", role: .assistant, status: .streaming)
+        try await messages.saveIfAbsent(placeholder)
+
+        let fetched = try await messages.fetch(id: "a1")
+        XCTAssertEqual(fetched?.status, .error, "Placeholder must not overwrite established error state")
+        XCTAssertEqual(fetched?.error, "runtime failed")
+    }
 }
 
 // MARK: - Helpers

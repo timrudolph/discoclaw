@@ -45,7 +45,7 @@ public final class SyncEngine: ObservableObject {
     // MARK: - Lifecycle
 
     public func start() async {
-        await performSync()
+        await performFullSync()
         connectWebSocket()
     }
 
@@ -58,6 +58,30 @@ public final class SyncEngine: ObservableObject {
 
     // MARK: - Sync
 
+    /// Full sync — fetches everything from the server (since=0) and reconciles the
+    /// local DB so it exactly matches: upserts server records, deletes local-only records.
+    /// Called on every app launch.
+    private func performFullSync() async {
+        isSyncing = true
+        defer { isSyncing = false }
+
+        do {
+            let response = try await api.sync(since: 0)
+
+            let convs = response.conversations.map { $0.toConversation() }
+            try await conversationRepo.replaceAll(convs)
+
+            let msgs = response.messages.map { $0.toMessage() }
+            try await messageRepo.replaceAll(msgs)
+
+            SyncCursor.value = response.cursor
+        } catch {
+            // Non-fatal: local cache still displayed. Delta sync will catch up on reconnect.
+        }
+    }
+
+    /// Delta sync — fetches only changes since the last known cursor.
+    /// Called on WebSocket reconnect to catch anything missed while disconnected.
     private func performSync() async {
         isSyncing = true
         defer { isSyncing = false }
@@ -112,8 +136,10 @@ public final class SyncEngine: ObservableObject {
             activeTools.removeValue(forKey: messageId)
             SyncCursor.advance(to: seq)
 
-        case .messageError(let messageId, _, let error):
-            try? await messageRepo.updateStatus(id: messageId, status: .error, error: error)
+        case .messageError(let messageId, let conversationId, let error):
+            // Use setError (upsert) so the error is established even if the client
+            // hasn't saved the streaming placeholder yet (fast-failing runtime race).
+            try? await messageRepo.setError(id: messageId, conversationId: conversationId, error: error)
             activeTools.removeValue(forKey: messageId)
 
         case .toolStart(let messageId, _, let label):

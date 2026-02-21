@@ -8,6 +8,8 @@ final class ChatViewModel: ObservableObject {
     @Published private(set) var isSending = false
     @Published private(set) var hasMore = false
     @Published private(set) var isLoadingMore = false
+    /// Set when a send fails at the HTTP level. Displayed as a dismissible alert.
+    @Published var sendError: String?
 
     let conversationId: String
 
@@ -45,6 +47,7 @@ final class ChatViewModel: ObservableObject {
         guard !trimmed.isEmpty, !isSending else { return }
         isSending = true
         defer { isSending = false }
+        sendError = nil
 
         let clientId = UUID().uuidString
 
@@ -78,7 +81,8 @@ final class ChatViewModel: ObservableObject {
             )
 
             // Insert a placeholder for the incoming assistant turn.
-            // The SyncEngine will fill it in via WebSocket deltas.
+            // Use saveIfAbsent (INSERT OR IGNORE) so we don't overwrite an error state
+            // that may have already been written by a fast-arriving WebSocket event.
             let placeholder = Message(
                 id: response.assistantMessageId,
                 clientId: nil,
@@ -91,13 +95,16 @@ final class ChatViewModel: ObservableObject {
                 createdAt: Date(),
                 completedAt: nil
             )
-            try? await repo.save(placeholder)
+            try? await repo.saveIfAbsent(placeholder)
         } catch {
+            // Mark the optimistic message as failed so it shows as an error bubble.
             try? await repo.updateStatus(
                 id: clientId,
                 status: .error,
                 error: error.localizedDescription
             )
+            // Also surface a persistent alert — the error bubble can be missed or synced away.
+            sendError = error.localizedDescription
         }
     }
 

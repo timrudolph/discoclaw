@@ -52,11 +52,31 @@ public final class MessageRepository {
         }
     }
 
-    /// Bulk upsert — used by the sync engine on app launch.
+    /// Bulk upsert — used by the delta sync engine.
     public func saveAll(_ messages: [Message]) async throws {
         try await db.write { db in
             for message in messages {
                 try message.save(db)
+            }
+        }
+    }
+
+    /// Full replace — upserts server records and deletes anything not on the server.
+    /// Used on app launch to make the client exactly match the server.
+    public func replaceAll(_ messages: [Message]) async throws {
+        try await db.write { db in
+            if messages.isEmpty {
+                try Message.deleteAll(db)
+            } else {
+                let ids = messages.map { $0.id }
+                let placeholders = ids.map { _ in "?" }.joined(separator: ",")
+                try db.execute(
+                    sql: "DELETE FROM messages WHERE id NOT IN (\(placeholders))",
+                    arguments: StatementArguments(ids)
+                )
+                for message in messages {
+                    try message.save(db)
+                }
             }
         }
     }
@@ -87,6 +107,43 @@ public final class MessageRepository {
                      WHERE id = ?
                     """,
                 arguments: [status.rawValue, error, completedAt, id]
+            )
+        }
+    }
+
+    /// Upsert an error state for an assistant message.
+    /// If the row doesn't exist yet (WS event arrived before the client saved the placeholder),
+    /// it is created with status=error. If it already exists, only status and error are updated.
+    public func setError(id: String, conversationId: String, error: String) async throws {
+        let now = Date()
+        try await db.write { db in
+            try db.execute(
+                sql: """
+                    INSERT INTO messages (id, conversationId, role, content, status, error, seq, createdAt)
+                    VALUES (?, ?, 'assistant', '', 'error', ?, 0, ?)
+                    ON CONFLICT(id) DO UPDATE SET status = 'error', error = excluded.error
+                    """,
+                arguments: [id, conversationId, error, now]
+            )
+        }
+    }
+
+    /// INSERT OR IGNORE — saves the message only if no row with the same id exists.
+    /// Used for assistant placeholders so they don't overwrite an error state already
+    /// established by an earlier WebSocket event.
+    public func saveIfAbsent(_ message: Message) async throws {
+        try await db.write { db in
+            try db.execute(
+                sql: """
+                    INSERT OR IGNORE INTO messages
+                        (id, clientId, conversationId, role, content, status, error, seq, createdAt, completedAt)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                arguments: [
+                    message.id, message.clientId, message.conversationId,
+                    message.role.rawValue, message.content, message.status.rawValue,
+                    message.error, message.seq, message.createdAt, message.completedAt,
+                ]
             )
         }
     }
