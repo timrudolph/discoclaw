@@ -150,13 +150,15 @@ public final class MessageRepository {
 
     /// Called on `message.complete` — overwrites content with the authoritative final value.
     /// Safer than trusting all deltas arrived in order (handles any missed chunks).
+    /// Guards against overwriting an error state: the runtime always emits done after error,
+    /// so a message.complete can arrive after message.error on the same turn.
     public func finalize(id: String, content: String, completedAt: Date) async throws {
         try await db.write { db in
             try db.execute(
                 sql: """
                     UPDATE messages
                        SET content = ?, status = 'complete', completedAt = ?
-                     WHERE id = ?
+                     WHERE id = ? AND status != 'error'
                     """,
                 arguments: [content, completedAt, id]
             )

@@ -1,4 +1,6 @@
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
 import type { RuntimeAdapter } from '../runtime/types.js';
 import type { Db, ConversationRow, MessageRow, MemoryItemRow } from './db.js';
 import { nextSeq } from './db.js';
@@ -51,6 +53,20 @@ function toolLabel(name: string): string {
   return TOOL_LABELS[name] ?? `Using ${name}…`;
 }
 
+// Cache the appfigures context file content after first load.
+// undefined = not yet attempted; null = file not found or tokens not set.
+let _appfiguresContext: string | null | undefined;
+
+async function loadAppfiguresContext(contextPath: string): Promise<string | null> {
+  if (_appfiguresContext !== undefined) return _appfiguresContext;
+  try {
+    _appfiguresContext = await fs.promises.readFile(contextPath, 'utf8');
+  } catch {
+    _appfiguresContext = null;
+  }
+  return _appfiguresContext;
+}
+
 const KIND_SYSTEM_PREFIX: Record<string, string> = {
   tasks: [
     'You are managing a persistent task list for this conversation.',
@@ -66,6 +82,8 @@ function buildPrompt(
   userContent: string,
   kind: string | null,
   memoryItems: MemoryItemRow[],
+  appfiguresContext: string | null,
+  contextModulesContent: string,
 ): string {
   const MAX_HISTORY = 20;
   const recent = history.slice(-MAX_HISTORY);
@@ -80,7 +98,11 @@ function buildPrompt(
       }\n\n---\n\n`
     : '';
 
-  if (recent.length === 0) return systemPrefix + memoryBlock + userContent;
+  const appfiguresBlock = appfiguresContext
+    ? `${appfiguresContext}\n\n---\n\n`
+    : '';
+
+  if (recent.length === 0) return systemPrefix + memoryBlock + appfiguresBlock + contextModulesContent + userContent;
 
   const lines = recent
     .filter((m) => m.status === 'complete' && m.content.trim())
@@ -88,7 +110,7 @@ function buildPrompt(
     .join('\n\n');
 
   const historyBlock = lines ? `Recent conversation:\n\n${lines}\n\n---\n\n` : '';
-  return systemPrefix + memoryBlock + historyBlock + userContent;
+  return systemPrefix + memoryBlock + appfiguresBlock + contextModulesContent + historyBlock + userContent;
 }
 
 export type InvokeOptions = {
@@ -120,7 +142,26 @@ export async function invokeRuntime(opts: InvokeOptions): Promise<string> {
     .prepare('SELECT * FROM memory_items WHERE user_id = ? AND deprecated_at IS NULL ORDER BY created_at ASC')
     .all(conversation.user_id) as MemoryItemRow[];
 
-  const prompt = buildPrompt(history, opts.userMessageContent, conversation.kind, memoryItems);
+  // Inject Appfigures API context when credentials are configured
+  const appfiguresContext = config.appfiguresToken && config.appfiguresClientKey
+    ? await loadAppfiguresContext(config.appfiguresContextPath)
+    : null;
+
+  // Load and inject per-conversation context modules
+  const contextModuleNames: string[] = conversation.context_modules
+    ? JSON.parse(conversation.context_modules) as string[]
+    : [];
+  let contextModulesContent = '';
+  for (const moduleName of contextModuleNames) {
+    // Safety: only allow simple .md filenames (no path traversal)
+    if (!moduleName.endsWith('.md') || moduleName.includes('/') || moduleName.includes('..')) continue;
+    try {
+      const content = await fs.promises.readFile(path.join(config.contextDir, moduleName), 'utf8');
+      contextModulesContent += `${content}\n\n---\n\n`;
+    } catch { /* skip missing */ }
+  }
+
+  const prompt = buildPrompt(history, opts.userMessageContent, conversation.kind, memoryItems, appfiguresContext, contextModulesContent);
   const assistantId = crypto.randomUUID();
   const assistantSeq = nextSeq();
   const now = Date.now();
@@ -165,6 +206,11 @@ function streamInBackground(params: StreamParams): void {
     const { db, hub, runtime, config, conversation, assistantId, assistantSeq, prompt, sessionId } = params;
     const userId = conversation.user_id;
     let fullContent = '';
+    // Tracks whether the runtime emitted an error event. The runtime always follows
+    // an error with a done event (for cleanup), but we must not treat that done as
+    // a successful completion — it would overwrite the error state in the DB and on
+    // connected clients, making the error flash and disappear.
+    let hadError = false;
 
     // Mark streaming
     db.prepare("UPDATE messages SET status = 'streaming' WHERE id = ?").run(assistantId);
@@ -172,7 +218,7 @@ function streamInBackground(params: StreamParams): void {
     try {
       const events = runtime.invoke({
         prompt,
-        model: config.runtimeModel,
+        model: conversation.model_override ?? config.runtimeModel,
         cwd: config.workspaceCwd,
         sessionId,
         tools: config.runtimeTools,
@@ -213,6 +259,10 @@ function streamInBackground(params: StreamParams): void {
             break;
 
           case 'done': {
+            // Skip: the runtime emits done after every error event as a cleanup signal.
+            // Treating it as a completion would wipe the error state.
+            if (hadError) break;
+
             const completedAt = Date.now();
             db.prepare(`
               UPDATE messages SET status = 'complete', completed_at = ? WHERE id = ?
@@ -231,6 +281,7 @@ function streamInBackground(params: StreamParams): void {
           }
 
           case 'error': {
+            hadError = true;
             const retryAt = rateLimitRetryAt(event.message);
             const storedError = retryAt ? `rate_limit:${retryAt}` : event.message;
             db.prepare(`
