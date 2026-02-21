@@ -10,6 +10,13 @@ public struct Conversation: Codable, Identifiable, Equatable, Sendable {
     public var archivedAt: Date?
     public var isProtected: Bool
     public var kind: String?
+    public var modelOverride: String?
+    /// Per-conversation SOUL.md content.
+    public var soul: String?
+    /// Per-conversation IDENTITY.md content.
+    public var identity: String?
+    /// Per-conversation USER.md content.
+    public var userBio: String?
 
     public var isArchived: Bool { archivedAt != nil }
 
@@ -31,7 +38,11 @@ public struct Conversation: Codable, Identifiable, Equatable, Sendable {
         updatedAt: Date,
         archivedAt: Date? = nil,
         isProtected: Bool = false,
-        kind: String? = nil
+        kind: String? = nil,
+        modelOverride: String? = nil,
+        soul: String? = nil,
+        identity: String? = nil,
+        userBio: String? = nil
     ) {
         self.id = id
         self.title = title
@@ -41,6 +52,10 @@ public struct Conversation: Codable, Identifiable, Equatable, Sendable {
         self.archivedAt = archivedAt
         self.isProtected = isProtected
         self.kind = kind
+        self.modelOverride = modelOverride
+        self.soul = soul
+        self.identity = identity
+        self.userBio = userBio
     }
 }
 

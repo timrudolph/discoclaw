@@ -84,9 +84,18 @@ function buildPrompt(
   memoryItems: MemoryItemRow[],
   appfiguresContext: string | null,
   contextModulesContent: string,
+  persona: { soul: string | null; identity: string | null; userBio: string | null },
 ): string {
   const MAX_HISTORY = 20;
   const recent = history.slice(-MAX_HISTORY);
+
+  // Per-conversation identity files (SOUL.md / IDENTITY.md / USER.md).
+  // Injected at the very top so they frame everything that follows.
+  let personaBlock = '';
+  if (persona.soul)     personaBlock += `${persona.soul.trim()}\n\n`;
+  if (persona.identity) personaBlock += `${persona.identity.trim()}\n\n`;
+  if (persona.userBio)  personaBlock += `${persona.userBio.trim()}\n\n`;
+  if (personaBlock)     personaBlock += '---\n\n';
 
   const systemPrefix = kind && KIND_SYSTEM_PREFIX[kind]
     ? `${KIND_SYSTEM_PREFIX[kind]}\n\n---\n\n`
@@ -102,7 +111,7 @@ function buildPrompt(
     ? `${appfiguresContext}\n\n---\n\n`
     : '';
 
-  if (recent.length === 0) return systemPrefix + memoryBlock + appfiguresBlock + contextModulesContent + userContent;
+  if (recent.length === 0) return personaBlock + systemPrefix + memoryBlock + appfiguresBlock + contextModulesContent + userContent;
 
   const lines = recent
     .filter((m) => m.status === 'complete' && m.content.trim())
@@ -110,7 +119,7 @@ function buildPrompt(
     .join('\n\n');
 
   const historyBlock = lines ? `Recent conversation:\n\n${lines}\n\n---\n\n` : '';
-  return systemPrefix + memoryBlock + appfiguresBlock + contextModulesContent + historyBlock + userContent;
+  return personaBlock + systemPrefix + memoryBlock + appfiguresBlock + contextModulesContent + historyBlock + userContent;
 }
 
 export type InvokeOptions = {
@@ -161,7 +170,12 @@ export async function invokeRuntime(opts: InvokeOptions): Promise<string> {
     } catch { /* skip missing */ }
   }
 
-  const prompt = buildPrompt(history, opts.userMessageContent, conversation.kind, memoryItems, appfiguresContext, contextModulesContent);
+  const persona = {
+    soul:     conversation.soul     ?? null,
+    identity: conversation.identity ?? null,
+    userBio:  conversation.user_bio ?? null,
+  };
+  const prompt = buildPrompt(history, opts.userMessageContent, conversation.kind, memoryItems, appfiguresContext, contextModulesContent, persona);
   const assistantId = crypto.randomUUID();
   const assistantSeq = nextSeq();
   const now = Date.now();

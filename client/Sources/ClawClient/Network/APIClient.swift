@@ -31,6 +31,71 @@ public final class APIClient: Sendable {
         try await get("/auth/me")
     }
 
+    // MARK: - Cron jobs
+
+    public func listCronJobs() async throws -> CronJobsResponse {
+        try await get("/crons")
+    }
+
+    public func createCronJob(name: String, schedule: String, timezone: String, prompt: String, conversationId: String) async throws -> CronJob {
+        try await post("/crons", body: CreateCronJobRequest(name: name, schedule: schedule, timezone: timezone, prompt: prompt, conversationId: conversationId))
+    }
+
+    public func updateCronJob(id: String, enabled: Bool? = nil, name: String? = nil, schedule: String? = nil, timezone: String? = nil, prompt: String? = nil) async throws -> CronJob {
+        try await patch("/crons/\(id)", body: UpdateCronJobRequest(enabled: enabled, name: name, schedule: schedule, timezone: timezone, prompt: prompt))
+    }
+
+    public func deleteCronJob(id: String) async throws {
+        let (data, response) = try await session.data(for: makeRequest("DELETE", "/crons/\(id)"))
+        try checkStatus(response, data: data)
+    }
+
+    // MARK: - Beads
+
+    public func listBeads(status: String = "open", limit: Int = 100) async throws -> BeadsResponse {
+        try await get("/beads?status=\(status)&limit=\(limit)")
+    }
+
+    public func getBead(id: String) async throws -> Bead {
+        try await get("/beads/\(id)")
+    }
+
+    public func createBead(title: String, description: String? = nil, priority: Int? = nil, owner: String? = nil) async throws -> Bead {
+        try await post("/beads", body: CreateBeadRequest(title: title, description: description, priority: priority, owner: owner))
+    }
+
+    public func updateBead(id: String, title: String? = nil, description: String? = nil, status: String? = nil, priority: Int? = nil, owner: String? = nil) async throws -> Bead? {
+        try await patch("/beads/\(id)", body: UpdateBeadRequest(title: title, description: description, status: status, priority: priority, owner: owner))
+    }
+
+    public func closeBead(id: String, reason: String? = nil) async throws -> Bead? {
+        try await post("/beads/\(id)/close", body: CloseBeadRequest(reason: reason))
+    }
+
+    public func addBeadLabel(id: String, label: String) async throws -> Bead {
+        try await post("/beads/\(id)/labels", body: AddBeadLabelRequest(label: label))
+    }
+
+    // MARK: - Workspace files
+
+    public func listWorkspaceFiles() async throws -> WorkspaceFilesResponse {
+        try await get("/workspace/files")
+    }
+
+    public func getWorkspaceFile(name: String) async throws -> WorkspaceFileResponse {
+        try await get("/workspace/files/\(name)")
+    }
+
+    public func updateWorkspaceFile(name: String, content: String) async throws {
+        var req = makeRequest("PUT", "/workspace/files/\(name)")
+        req.httpBody = try JSONEncoder().encode(WorkspaceFileUpdateRequest(content: content))
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let (data, response) = try await session.data(for: req)
+        try checkStatus(response, data: data)
+    }
+
+    // MARK: - Memory
+
     public func listMemory() async throws -> MemoryListResponse {
         try await get("/memory")
     }
@@ -53,6 +118,41 @@ public final class APIClient: Sendable {
         try checkStatus(response, data: data)
     }
 
+    // MARK: - Models
+
+    public func listModels() async throws -> ModelsResponse {
+        try await get("/models")
+    }
+
+    // MARK: - Context modules
+
+    public func listContextModules() async throws -> ContextModulesListResponse {
+        try await get("/context-modules")
+    }
+
+    public func createContextModule(name: String, content: String) async throws -> ContextModule {
+        try await post("/context-modules", body: CreateContextModuleRequest(name: name, content: content))
+    }
+
+    // MARK: - Persona
+
+    public func updatePersona(conversationId: String, soul: String?, identity: String?, userBio: String?) async throws -> ConversationPersona {
+        try await put("/conversations/\(conversationId)/persona",
+                      body: UpdatePersonaRequest(soul: soul, identity: identity, userBio: userBio))
+    }
+
+    public func getConversationModules(conversationId: String) async throws -> ConversationModulesResponse {
+        try await get("/conversations/\(conversationId)/context-modules")
+    }
+
+    public func setConversationModules(conversationId: String, modules: [String]) async throws {
+        var req = makeRequest("PUT", "/conversations/\(conversationId)/context-modules")
+        req.httpBody = try JSONEncoder().encode(["modules": modules])
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let (data, response) = try await session.data(for: req)
+        try checkStatus(response, data: data)
+    }
+
     // MARK: - Conversations
 
     public func listConversations(includeArchived: Bool = false) async throws -> [ConversationListItem] {
@@ -66,11 +166,12 @@ public final class APIClient: Sendable {
     public func updateConversation(
         id: String,
         title: String? = nil,
-        archived: Bool? = nil
+        archived: Bool? = nil,
+        modelOverride: String?? = nil
     ) async throws -> ConversationDetail {
         try await patch(
             "/conversations/\(id)",
-            body: UpdateConversationRequest(title: title, archived: archived)
+            body: UpdateConversationRequest(title: title, archived: archived, modelOverride: modelOverride)
         )
     }
 
@@ -138,6 +239,15 @@ public final class APIClient: Sendable {
 
     private func patch<B: Encodable, T: Decodable>(_ path: String, body: B) async throws -> T {
         var req = makeRequest("PATCH", path)
+        req.httpBody = try JSONEncoder().encode(body)
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let (data, response) = try await session.data(for: req)
+        try checkStatus(response, data: data)
+        return try decode(T.self, from: data)
+    }
+
+    private func put<B: Encodable, T: Decodable>(_ path: String, body: B) async throws -> T {
+        var req = makeRequest("PUT", path)
         req.httpBody = try JSONEncoder().encode(body)
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let (data, response) = try await session.data(for: req)

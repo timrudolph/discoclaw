@@ -12,6 +12,9 @@ extension AppDatabase {
                 t.column("createdAt", .datetime).notNull()
                 t.column("updatedAt", .datetime).notNull()
                 t.column("archivedAt", .datetime)
+                t.column("isProtected", .boolean).notNull().defaults(to: false)
+                t.column("kind", .text)
+                t.column("modelOverride", .text)
             }
 
             try db.create(table: "messages") { t in
@@ -32,18 +35,12 @@ extension AppDatabase {
             try db.create(indexOn: "messages", columns: ["seq"])
         }
 
-        m.registerMigration("v2_is_protected") { db in
+        m.registerMigration("v2_conversation_persona") { db in
             try db.alter(table: "conversations") { t in
-                t.add(column: "isProtected", .boolean).notNull().defaults(to: false)
+                t.add(column: "soul",     .text)
+                t.add(column: "identity", .text)
+                t.add(column: "userBio",  .text)
             }
-        }
-
-        m.registerMigration("v3_kind") { db in
-            try db.alter(table: "conversations") { t in
-                t.add(column: "kind", .text)
-            }
-            // Backfill: existing protected conversations are 'general'.
-            try db.execute(sql: "UPDATE conversations SET kind = 'general' WHERE isProtected = 1")
         }
 
         return m

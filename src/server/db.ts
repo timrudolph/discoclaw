@@ -50,6 +50,11 @@ export type ConversationRow = {
   archived_at: number | null;
   is_protected: 0 | 1;
   kind: string | null;
+  context_modules: string | null;   // JSON array of module filenames, e.g. ["beads.md", "pa.md"]
+  model_override: string | null;    // Claude model alias override, e.g. "sonnet", "haiku"
+  soul: string | null;              // Per-conversation SOUL.md — who the assistant is
+  identity: string | null;          // Per-conversation IDENTITY.md — name and vibe
+  user_bio: string | null;          // Per-conversation USER.md — who is being helped
 };
 
 export type MessageRow = {
@@ -65,12 +70,40 @@ export type MessageRow = {
   completed_at: number | null;
 };
 
+export type CronJobRow = {
+  id: string;
+  user_id: string;
+  name: string;
+  schedule: string;
+  timezone: string;
+  prompt: string;
+  conversation_id: string;
+  enabled: 0 | 1;
+  last_run_at: number | null;
+  created_at: number;
+};
+
 export type MemoryItemRow = {
   id: string;
   user_id: string;
   content: string;
   created_at: number;
   deprecated_at: number | null;
+};
+
+export type BeadRow = {
+  id: string;
+  user_id: string;
+  title: string;
+  status: string;          // open | in_progress | blocked | closed
+  description: string | null;
+  priority: number | null;
+  owner: string | null;
+  labels: string | null;   // JSON array, e.g. '["bug","urgent"]'
+  created_at: string;      // ISO-8601
+  updated_at: string;
+  closed_at: string | null;
+  close_reason: string | null;
 };
 
 // ─── Migrations ───────────────────────────────────────────────────────────────
@@ -90,7 +123,6 @@ function migrate(db: Db): void {
     [1, () => v1(db)],
     [2, () => v2(db)],
     [3, () => v3(db)],
-    [4, () => v4(db)],
   ];
 
   for (const [version, run] of migrations) {
@@ -100,35 +132,6 @@ function migrate(db: Db): void {
       db.prepare('INSERT INTO schema_migrations (version) VALUES (?)').run(version);
     })();
   }
-}
-
-function v2(db: Db): void {
-  db.exec(`
-    ALTER TABLE conversations ADD COLUMN is_protected INTEGER NOT NULL DEFAULT 0
-  `);
-}
-
-function v3(db: Db): void {
-  db.exec(`
-    ALTER TABLE conversations ADD COLUMN kind TEXT
-  `);
-  // Backfill: the one protected conversation that exists is 'general'.
-  db.exec(`
-    UPDATE conversations SET kind = 'general' WHERE is_protected = 1
-  `);
-}
-
-function v4(db: Db): void {
-  db.exec(`
-    CREATE TABLE memory_items (
-      id           TEXT PRIMARY KEY,
-      user_id      TEXT NOT NULL REFERENCES users(id),
-      content      TEXT NOT NULL,
-      created_at   INTEGER NOT NULL,
-      deprecated_at INTEGER
-    );
-    CREATE INDEX idx_memory_user ON memory_items(user_id, deprecated_at);
-  `);
 }
 
 function v1(db: Db): void {
@@ -150,13 +153,17 @@ function v1(db: Db): void {
     );
 
     CREATE TABLE conversations (
-      id               TEXT PRIMARY KEY,
-      user_id          TEXT NOT NULL REFERENCES users(id),
-      title            TEXT,
+      id                TEXT PRIMARY KEY,
+      user_id           TEXT NOT NULL REFERENCES users(id),
+      title             TEXT,
       claude_session_id TEXT,
-      created_at       INTEGER NOT NULL,
-      updated_at       INTEGER NOT NULL,
-      archived_at      INTEGER
+      created_at        INTEGER NOT NULL,
+      updated_at        INTEGER NOT NULL,
+      archived_at       INTEGER,
+      is_protected      INTEGER NOT NULL DEFAULT 0,
+      kind              TEXT,
+      context_modules   TEXT,
+      model_override    TEXT
     );
 
     CREATE TABLE messages (
@@ -180,5 +187,59 @@ function v1(db: Db): void {
       last_seq   INTEGER NOT NULL DEFAULT 0,
       updated_at INTEGER NOT NULL
     );
+
+    CREATE TABLE memory_items (
+      id            TEXT PRIMARY KEY,
+      user_id       TEXT NOT NULL REFERENCES users(id),
+      content       TEXT NOT NULL,
+      created_at    INTEGER NOT NULL,
+      deprecated_at INTEGER
+    );
+
+    CREATE INDEX idx_memory_user ON memory_items(user_id, deprecated_at);
+
+    CREATE TABLE server_cron_jobs (
+      id              TEXT PRIMARY KEY,
+      user_id         TEXT NOT NULL REFERENCES users(id),
+      name            TEXT NOT NULL,
+      schedule        TEXT NOT NULL,
+      timezone        TEXT NOT NULL DEFAULT 'UTC',
+      prompt          TEXT NOT NULL,
+      conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+      enabled         INTEGER NOT NULL DEFAULT 1,
+      last_run_at     INTEGER,
+      created_at      INTEGER NOT NULL
+    );
+
+    CREATE INDEX idx_cron_user ON server_cron_jobs(user_id);
+  `);
+}
+
+function v2(db: Db): void {
+  db.exec(`
+    CREATE TABLE beads (
+      id           TEXT PRIMARY KEY,
+      user_id      TEXT NOT NULL REFERENCES users(id),
+      title        TEXT NOT NULL,
+      status       TEXT NOT NULL DEFAULT 'open',
+      description  TEXT,
+      priority     INTEGER,
+      owner        TEXT,
+      labels       TEXT,
+      created_at   TEXT NOT NULL,
+      updated_at   TEXT NOT NULL,
+      closed_at    TEXT,
+      close_reason TEXT
+    );
+
+    CREATE INDEX idx_beads_user_status ON beads(user_id, status);
+  `);
+}
+
+function v3(db: Db): void {
+  db.exec(`
+    ALTER TABLE conversations ADD COLUMN soul     TEXT;
+    ALTER TABLE conversations ADD COLUMN identity TEXT;
+    ALTER TABLE conversations ADD COLUMN user_bio TEXT;
   `);
 }

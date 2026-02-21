@@ -6,12 +6,18 @@ struct ChatView: View {
     @EnvironmentObject private var syncEngine: SyncEngine
 
     let conversation: Conversation?
+    private let conversationId: String
+    private let api: APIClient
 
     @State private var draftText = ""
     @State private var atBottom = true
+    @State private var showingContextModules = false
+    @State private var showingPersonaEditor = false
 
     init(conversationId: String, conversation: Conversation?, messageRepo: MessageRepository, api: APIClient) {
+        self.conversationId = conversationId
         self.conversation = conversation
+        self.api = api
         _viewModel = StateObject(
             wrappedValue: ChatViewModel(conversationId: conversationId, repo: messageRepo, api: api)
         )
@@ -34,6 +40,43 @@ struct ChatView: View {
                 }
                 .disabled(viewModel.messages.isEmpty)
             }
+            ToolbarItem(placement: .secondaryAction) {
+                Button {
+                    showingContextModules = true
+                } label: {
+                    Label("Context Modules", systemImage: "doc.text.magnifyingglass")
+                }
+            }
+            ToolbarItem(placement: .secondaryAction) {
+                Button {
+                    showingPersonaEditor = true
+                } label: {
+                    Label("Chat Identity", systemImage: "person.text.rectangle")
+                }
+            }
+        }
+        .sheet(isPresented: $showingContextModules) {
+            NavigationStack {
+                ContextModulesView(api: api, conversationId: conversationId)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Done") { showingContextModules = false }
+                        }
+                    }
+            }
+        }
+        .sheet(isPresented: $showingPersonaEditor) {
+            NavigationStack {
+                PersonaEditorView(api: api, conversationId: conversationId, conversation: conversation)
+            }
+        }
+        .alert("Failed to Send", isPresented: Binding(
+            get: { viewModel.sendError != nil },
+            set: { if !$0 { viewModel.sendError = nil } }
+        )) {
+            Button("OK") { viewModel.sendError = nil }
+        } message: {
+            Text(viewModel.sendError ?? "")
         }
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)

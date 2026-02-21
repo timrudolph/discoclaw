@@ -36,6 +36,7 @@ export function registerConversationRoutes(app: FastifyInstance, db: Db): void {
       title: r.title,
       isProtected: r.is_protected === 1,
       kind: r.kind ?? undefined,
+      modelOverride: r.model_override ?? undefined,
       updatedAt: r.updated_at,
       createdAt: r.created_at,
       archivedAt: r.archived_at ?? undefined,
@@ -81,6 +82,7 @@ export function registerConversationRoutes(app: FastifyInstance, db: Db): void {
       title: row.title,
       isProtected: row.is_protected === 1,
       kind: row.kind ?? undefined,
+      modelOverride: row.model_override ?? undefined,
       claudeSessionId: row.claude_session_id,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
@@ -100,7 +102,7 @@ export function registerConversationRoutes(app: FastifyInstance, db: Db): void {
       return reply.status(403).send({ error: 'Cannot archive a protected conversation.' });
     }
 
-    const { title, archived } = req.body as { title?: string; archived?: boolean };
+    const { title, archived, modelOverride } = req.body as { title?: string; archived?: boolean; modelOverride?: string | null };
     const now = Date.now();
 
     if (title !== undefined) {
@@ -110,6 +112,11 @@ export function registerConversationRoutes(app: FastifyInstance, db: Db): void {
     if (archived !== undefined) {
       db.prepare('UPDATE conversations SET archived_at = ?, updated_at = ? WHERE id = ?')
         .run(archived ? now : null, now, row.id);
+    }
+    if (modelOverride !== undefined) {
+      // null clears the override (revert to server default); a string sets it
+      db.prepare('UPDATE conversations SET model_override = ?, updated_at = ? WHERE id = ?')
+        .run(modelOverride ?? null, now, row.id);
     }
 
     const updated = db
@@ -121,10 +128,65 @@ export function registerConversationRoutes(app: FastifyInstance, db: Db): void {
       title: updated.title,
       isProtected: updated.is_protected === 1,
       kind: updated.kind ?? undefined,
+      modelOverride: updated.model_override ?? undefined,
       createdAt: updated.created_at,
       updatedAt: updated.updated_at,
       archivedAt: updated.archived_at ?? undefined,
     };
+  });
+
+  // GET /conversations/:id/persona
+  app.get<{ Params: { id: string } }>('/conversations/:id/persona', async (req, reply) => {
+    const row = db
+      .prepare('SELECT soul, identity, user_bio FROM conversations WHERE id = ? AND user_id = ?')
+      .get(req.params.id, req.user.id) as Pick<ConversationRow, 'soul' | 'identity' | 'user_bio'> | undefined;
+
+    if (!row) return reply.notFound();
+
+    return {
+      soul:     row.soul     ?? null,
+      identity: row.identity ?? null,
+      userBio:  row.user_bio ?? null,
+    };
+  });
+
+  // PUT /conversations/:id/persona
+  app.put<{ Params: { id: string } }>('/conversations/:id/persona', async (req, reply) => {
+    const row = db
+      .prepare('SELECT id FROM conversations WHERE id = ? AND user_id = ?')
+      .get(req.params.id, req.user.id) as { id: string } | undefined;
+
+    if (!row) return reply.notFound();
+
+    const { soul, identity, userBio } = req.body as {
+      soul?: string | null;
+      identity?: string | null;
+      userBio?: string | null;
+    };
+
+    const now = Date.now();
+    if (soul !== undefined) {
+      db.prepare('UPDATE conversations SET soul = ?, updated_at = ? WHERE id = ?')
+        .run(soul ?? null, now, row.id);
+    }
+    if (identity !== undefined) {
+      db.prepare('UPDATE conversations SET identity = ?, updated_at = ? WHERE id = ?')
+        .run(identity ?? null, now, row.id);
+    }
+    if (userBio !== undefined) {
+      db.prepare('UPDATE conversations SET user_bio = ?, updated_at = ? WHERE id = ?')
+        .run(userBio ?? null, now, row.id);
+    }
+
+    const updated = db
+      .prepare('SELECT soul, identity, user_bio FROM conversations WHERE id = ?')
+      .get(row.id) as Pick<ConversationRow, 'soul' | 'identity' | 'user_bio'>;
+
+    reply.status(200).send({
+      soul:     updated.soul     ?? null,
+      identity: updated.identity ?? null,
+      userBio:  updated.user_bio ?? null,
+    });
   });
 
   // DELETE /conversations/:id

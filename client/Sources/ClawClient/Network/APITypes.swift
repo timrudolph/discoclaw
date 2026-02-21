@@ -53,6 +53,7 @@ public struct ConversationListItem: Decodable {
     public let title: String?
     public let isProtected: Bool?
     public let kind: String?
+    public let modelOverride: String?
     public let updatedAt: Int
     public let createdAt: Int
     public let archivedAt: Int?
@@ -70,6 +71,7 @@ public struct ConversationDetail: Decodable {
     public let title: String?
     public let isProtected: Bool?
     public let kind: String?
+    public let modelOverride: String?
     public let claudeSessionId: String?
     public let createdAt: Int
     public let updatedAt: Int
@@ -84,7 +86,10 @@ public struct CreateConversationRequest: Encodable {
 public struct UpdateConversationRequest: Encodable {
     public let title: String?
     public let archived: Bool?
-    public init(title: String?, archived: Bool?) { self.title = title; self.archived = archived }
+    public let modelOverride: String??   // Double-optional: nil = don't touch; .some(nil) = clear
+    public init(title: String?, archived: Bool?, modelOverride: String?? = nil) {
+        self.title = title; self.archived = archived; self.modelOverride = modelOverride
+    }
 }
 
 // ─── Messages ─────────────────────────────────────────────────────────────────
@@ -136,6 +141,139 @@ public struct SendMessageResponse: Decodable {
     public let assistantMessageId: String
 }
 
+// ─── Cron jobs ────────────────────────────────────────────────────────────────
+
+public struct CronJob: Decodable, Identifiable {
+    public let id: String
+    public let name: String
+    public let schedule: String
+    public let timezone: String
+    public let prompt: String
+    public let conversationId: String
+    public let enabled: Bool
+    public let lastRunAt: Int?
+    public let createdAt: Int
+}
+
+public struct CronJobsResponse: Decodable {
+    public let jobs: [CronJob]
+}
+
+public struct CreateCronJobRequest: Encodable {
+    public let name: String
+    public let schedule: String
+    public let timezone: String
+    public let prompt: String
+    public let conversationId: String
+    public init(name: String, schedule: String, timezone: String, prompt: String, conversationId: String) {
+        self.name = name; self.schedule = schedule; self.timezone = timezone
+        self.prompt = prompt; self.conversationId = conversationId
+    }
+}
+
+public struct UpdateCronJobRequest: Encodable {
+    public let enabled: Bool?
+    public let name: String?
+    public let schedule: String?
+    public let timezone: String?
+    public let prompt: String?
+    public init(enabled: Bool? = nil, name: String? = nil, schedule: String? = nil, timezone: String? = nil, prompt: String? = nil) {
+        self.enabled = enabled; self.name = name; self.schedule = schedule
+        self.timezone = timezone; self.prompt = prompt
+    }
+}
+
+// ─── Beads ────────────────────────────────────────────────────────────────────
+
+public struct Bead: Decodable, Identifiable, Equatable {
+    public let id: String
+    public let title: String
+    public let status: String
+    public let description: String?
+    public let priority: Int?
+    public let owner: String?
+    public let labels: [String]?
+    public let createdAt: String?
+    public let updatedAt: String?
+    public let closedAt: String?
+    public let closeReason: String?
+
+    public var statusEmoji: String {
+        switch status {
+        case "open":        return "🟢"
+        case "in_progress": return "🟡"
+        case "blocked":     return "⚠️"
+        case "closed":      return "☑️"
+        default:            return "⚪"
+        }
+    }
+
+    public var displayPriority: String {
+        guard let p = priority else { return "" }
+        return "P\(p)"
+    }
+}
+
+public struct BeadsResponse: Decodable {
+    public let beads: [Bead]
+}
+
+public struct CreateBeadRequest: Encodable {
+    public let title: String
+    public let description: String?
+    public let priority: Int?
+    public let owner: String?
+    public init(title: String, description: String?, priority: Int?, owner: String? = nil) {
+        self.title = title; self.description = description
+        self.priority = priority; self.owner = owner
+    }
+}
+
+public struct UpdateBeadRequest: Encodable {
+    public let title: String?
+    public let description: String?
+    public let status: String?
+    public let priority: Int?
+    public let owner: String?
+    public init(title: String?, description: String?, status: String?, priority: Int?, owner: String? = nil) {
+        self.title = title; self.description = description
+        self.status = status; self.priority = priority; self.owner = owner
+    }
+}
+
+public struct AddBeadLabelRequest: Encodable {
+    public let label: String
+    public init(label: String) { self.label = label }
+}
+
+public struct CloseBeadRequest: Encodable {
+    public let reason: String?
+    public init(reason: String?) { self.reason = reason }
+}
+
+// ─── Workspace ────────────────────────────────────────────────────────────────
+
+public struct WorkspaceFilesResponse: Decodable {
+    public let files: [WorkspaceFileInfo]
+
+    public struct WorkspaceFileInfo: Decodable, Identifiable {
+        public var id: String { name }
+        public let name: String
+        public let exists: Bool
+        public let preview: String
+    }
+}
+
+public struct WorkspaceFileResponse: Decodable {
+    public let name: String
+    public let content: String
+}
+
+public struct WorkspaceFileUpdateRequest: Encodable {
+    public let content: String
+    public init(content: String) { self.content = content }
+}
+
 // ─── Memory ───────────────────────────────────────────────────────────────────
 
 public struct MemoryListResponse: Decodable {
@@ -173,6 +311,57 @@ public struct DeviceListResponse: Decodable {
     }
 }
 
+// ─── Models ───────────────────────────────────────────────────────────────────
+
+public struct ConversationModel: Decodable, Identifiable {
+    public var id: String
+    public let label: String
+    public let description: String
+}
+
+public struct ModelsResponse: Decodable {
+    public let models: [ConversationModel]
+    public let `default`: String
+}
+
+// ─── Context modules ──────────────────────────────────────────────────────────
+
+public struct ContextModule: Decodable, Identifiable {
+    public var id: String { name }
+    public let name: String    // e.g. "beads.md"
+    public let label: String   // first heading from the file
+}
+
+public struct ContextModulesListResponse: Decodable {
+    public let modules: [ContextModule]
+}
+
+public struct ConversationModulesResponse: Decodable {
+    public let modules: [String]   // active module filenames
+}
+
+public struct CreateContextModuleRequest: Encodable {
+    public let name: String
+    public let content: String
+}
+
+// ─── Persona ───────────────────────────────────────────────────────────────────
+
+public struct ConversationPersona: Decodable {
+    public let soul: String?
+    public let identity: String?
+    public let userBio: String?
+}
+
+public struct UpdatePersonaRequest: Encodable {
+    public let soul: String?
+    public let identity: String?
+    public let userBio: String?
+    public init(soul: String?, identity: String?, userBio: String?) {
+        self.soul = soul; self.identity = identity; self.userBio = userBio
+    }
+}
+
 // ─── Sync ─────────────────────────────────────────────────────────────────────
 
 public struct SyncResponse: Decodable {
@@ -185,20 +374,29 @@ public struct SyncResponse: Decodable {
         public let title: String?
         public let isProtected: Bool?
         public let kind: String?
+        public let modelOverride: String?
+        public let claudeSessionId: String?
         public let updatedAt: Int
         public let createdAt: Int
         public let archivedAt: Int?
+        public let soul: String?
+        public let identity: String?
+        public let userBio: String?
 
         public func toConversation() -> Conversation {
             Conversation(
                 id: id,
                 title: title,
-                claudeSessionId: nil,
+                claudeSessionId: claudeSessionId,
                 createdAt: Date(timeIntervalSince1970: Double(createdAt) / 1000),
                 updatedAt: Date(timeIntervalSince1970: Double(updatedAt) / 1000),
                 archivedAt: archivedAt.map { Date(timeIntervalSince1970: Double($0) / 1000) },
                 isProtected: isProtected ?? false,
-                kind: kind
+                kind: kind,
+                modelOverride: modelOverride,
+                soul: soul,
+                identity: identity,
+                userBio: userBio
             )
         }
     }
