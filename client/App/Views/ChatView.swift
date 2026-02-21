@@ -9,10 +9,12 @@ struct ChatView: View {
     private let conversationId: String
     private let api: APIClient
 
-    @State private var draftText = ""
+    @State private var draftText: String
     @State private var atBottom = true
     @State private var showingContextModules = false
     @State private var showingPersonaEditor = false
+
+    private var draftKey: String { "draft.\(conversationId)" }
 
     init(conversationId: String, conversation: Conversation?, messageRepo: MessageRepository, api: APIClient) {
         self.conversationId = conversationId
@@ -21,6 +23,8 @@ struct ChatView: View {
         _viewModel = StateObject(
             wrappedValue: ChatViewModel(conversationId: conversationId, repo: messageRepo, api: api)
         )
+        // Restore persisted draft (empty string if none).
+        _draftText = State(initialValue: UserDefaults.standard.string(forKey: "draft.\(conversationId)") ?? "")
     }
 
     var body: some View {
@@ -30,9 +34,12 @@ struct ChatView: View {
             ComposeBarView(
                 text: $draftText,
                 isSending: viewModel.isSending,
-                onSend: send
+                isStreaming: viewModel.isStreaming,
+                onSend: send,
+                onStop: { Task { await viewModel.cancel() } }
             )
         }
+        .navigationTitle(conversation?.title ?? "Chat")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 ShareLink(item: exportText, subject: Text(conversation?.title ?? "Chat")) {
@@ -40,34 +47,35 @@ struct ChatView: View {
                 }
                 .disabled(viewModel.messages.isEmpty)
             }
-            ToolbarItem(placement: .secondaryAction) {
-                Button {
-                    showingContextModules = true
+            ToolbarItem(placement: .primaryAction) {
+                Menu {
+                    Button {
+                        showingContextModules = true
+                    } label: {
+                        Label("Context Modules", systemImage: "doc.text.magnifyingglass")
+                    }
+                    Button {
+                        showingPersonaEditor = true
+                    } label: {
+                        Label("Chat Identity", systemImage: "person.text.rectangle")
+                    }
                 } label: {
-                    Label("Context Modules", systemImage: "doc.text.magnifyingglass")
-                }
-            }
-            ToolbarItem(placement: .secondaryAction) {
-                Button {
-                    showingPersonaEditor = true
-                } label: {
-                    Label("Chat Identity", systemImage: "person.text.rectangle")
+                    Label("More", systemImage: "ellipsis.circle")
                 }
             }
         }
         .sheet(isPresented: $showingContextModules) {
-            NavigationStack {
-                ContextModulesView(api: api, conversationId: conversationId)
-                    .toolbar {
-                        ToolbarItem(placement: .cancellationAction) {
-                            Button("Done") { showingContextModules = false }
-                        }
-                    }
-            }
+            ContextModulesView(api: api, conversationId: conversationId)
         }
         .sheet(isPresented: $showingPersonaEditor) {
-            NavigationStack {
-                PersonaEditorView(api: api, conversationId: conversationId, conversation: conversation)
+            PersonaEditorView(api: api, conversationId: conversationId, conversation: conversation)
+        }
+        .onChange(of: draftText) { _, newValue in
+            // Persist draft so it survives conversation switches.
+            if newValue.isEmpty {
+                UserDefaults.standard.removeObject(forKey: draftKey)
+            } else {
+                UserDefaults.standard.set(newValue, forKey: draftKey)
             }
         }
         .alert("Failed to Send", isPresented: Binding(
@@ -129,10 +137,18 @@ struct ChatView: View {
                             .padding(.vertical, 8)
                         }
 
-                        ForEach(viewModel.messages) { message in
+                        ForEach(Array(viewModel.messages.enumerated()), id: \.element.id) { index, message in
+                            let prevDate = index > 0 ? viewModel.messages[index - 1].createdAt : nil
+                            if prevDate == nil || !Calendar.current.isDate(message.createdAt, inSameDayAs: prevDate!) {
+                                DateSeparatorView(date: message.createdAt)
+                                    .padding(.horizontal)
+                            }
                             MessageBubbleView(
                                 message: message,
-                                toolLabel: syncEngine.activeTools[message.id]
+                                toolLabel: syncEngine.activeTools[message.id],
+                                onRetry: (message.role == .user && message.status == .error)
+                                    ? { Task { await viewModel.retry(message: message) } }
+                                    : nil
                             )
                             .padding(.horizontal)
                             .id(message.id)
@@ -206,6 +222,34 @@ struct ChatView: View {
         } else {
             proxy.scrollTo("__bottom__")
         }
+    }
+}
+
+// MARK: - Date separator
+
+private struct DateSeparatorView: View {
+    let date: Date
+
+    private var label: String {
+        if Calendar.current.isDateInToday(date) { return "Today" }
+        if Calendar.current.isDateInYesterday(date) { return "Yesterday" }
+        return date.formatted(date: .abbreviated, time: .omitted)
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Rectangle()
+                .fill(Color.secondary.opacity(0.25))
+                .frame(height: 1)
+            Text(label)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .fixedSize()
+            Rectangle()
+                .fill(Color.secondary.opacity(0.25))
+                .frame(height: 1)
+        }
+        .padding(.vertical, 4)
     }
 }
 

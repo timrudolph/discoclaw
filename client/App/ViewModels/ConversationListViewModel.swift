@@ -5,18 +5,29 @@ import ClawClient
 @MainActor
 final class ConversationListViewModel: ObservableObject {
     @Published private(set) var conversations: [Conversation] = []
+    @Published private(set) var availableModels: [ConversationModel] = []
+    /// Latest complete message per conversation — used for list previews.
+    @Published private(set) var lastMessages: [String: Message] = [:]
     @Published var showArchived = false {
         didSet { setupObservation() }
     }
 
     private let repo: ConversationRepository
+    private let messageRepo: MessageRepository
     private let api: APIClient
     private var cancellables = Set<AnyCancellable>()
 
-    init(repo: ConversationRepository, api: APIClient) {
+    init(repo: ConversationRepository, messageRepo: MessageRepository, api: APIClient) {
         self.repo = repo
+        self.messageRepo = messageRepo
         self.api = api
         setupObservation()
+        Task { await loadModels() }
+    }
+
+    private func loadModels() async {
+        guard let response = try? await api.listModels() else { return }
+        availableModels = response.models
     }
 
     private func setupObservation() {
@@ -41,12 +52,17 @@ final class ConversationListViewModel: ObservableObject {
                 }
             })
             .store(in: &cancellables)
+
+        messageRepo.observeLastMessages()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] msgs in self?.lastMessages = msgs }
+            .store(in: &cancellables)
     }
 
     /// Creates a new conversation on the server, inserts it locally, and returns its id.
-    func newConversation() async -> String? {
+    func newConversation(title: String? = nil, modules: [String] = [], initialMemory: String? = nil) async -> String? {
         do {
-            let detail = try await api.createConversation()
+            let detail = try await api.createConversation(title: title)
             let conv = Conversation(
                 id: detail.id,
                 title: detail.title,
@@ -55,9 +71,16 @@ final class ConversationListViewModel: ObservableObject {
                 updatedAt: Date(timeIntervalSince1970: Double(detail.updatedAt) / 1000),
                 archivedAt: nil,
                 isProtected: detail.isProtected ?? false,
-                kind: detail.kind
+                kind: detail.kind,
+                modelOverride: detail.modelOverride
             )
             try await repo.save(conv)
+            if !modules.isEmpty {
+                try? await api.setConversationModules(conversationId: detail.id, modules: modules)
+            }
+            if let memory = initialMemory, !memory.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                _ = try? await api.addMemory(content: memory.trimmingCharacters(in: .whitespacesAndNewlines))
+            }
             return detail.id
         } catch {
             return nil
@@ -100,5 +123,15 @@ final class ConversationListViewModel: ObservableObject {
         // Delete locally first so the UI snaps immediately, then server.
         try? await repo.delete(id: conversation.id)
         try? await api.deleteConversation(id: conversation.id)
+    }
+
+    func setModel(_ conversation: Conversation, modelId: String?) async {
+        do {
+            let detail = try await api.updateConversation(id: conversation.id, modelOverride: .some(modelId))
+            var updated = conversation
+            updated.modelOverride = detail.modelOverride
+            updated.updatedAt = Date(timeIntervalSince1970: Double(detail.updatedAt) / 1000)
+            try await repo.save(updated)
+        } catch {}
     }
 }

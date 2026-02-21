@@ -1,6 +1,79 @@
 import SwiftUI
 import MarkdownUI
 
+// MARK: - Chat markdown theme
+
+extension Theme {
+    /// Chat-friendly markdown theme based on .gitHub but with fully adaptive
+    /// colors. The stock .gitHub theme hard-codes near-black backgrounds for
+    /// text (#18191D) and inline code (#25262A) in dark mode, which appear as
+    /// solid dark boxes inside chat bubbles. We override all three affected
+    /// element types to use system-adaptive semi-transparent colors instead.
+    static let chat = Theme.gitHub
+        // Remove the hardcoded #18191D dark-mode document background.
+        .text {
+            BackgroundColor(.clear)
+        }
+        // Replace the hardcoded #25262A inline-code background with an adaptive tint.
+        .code {
+            FontFamilyVariant(.monospaced)
+            FontSize(.em(0.85))
+            BackgroundColor(Color.secondary.opacity(0.15))
+        }
+        // Replace the hardcoded secondaryBackground code-block color and add copy button.
+        .codeBlock { config in
+            ZStack(alignment: .topTrailing) {
+                ScrollView(.horizontal) {
+                    config.label
+                        .markdownTextStyle {
+                            FontFamilyVariant(.monospaced)
+                            FontSize(.em(0.85))
+                        }
+                        .padding(.top, 32)   // reserve space under copy button
+                        .padding(.leading, 12)
+                        .padding([.trailing, .bottom], 12)
+                }
+                CopyCodeButton(code: config.content)
+                    .padding(6)
+            }
+            .background(Color.secondary.opacity(0.12),
+                        in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+}
+
+// MARK: - Copy button
+
+/// Small clipboard button shown in the top-right corner of each code block.
+/// Animates to a checkmark for 1.5 s after the user copies.
+struct CopyCodeButton: View {
+    let code: String
+    @State private var copied = false
+
+    var body: some View {
+        Button {
+            #if os(iOS)
+            UIPasteboard.general.string = code
+            #else
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(code, forType: .string)
+            #endif
+            withAnimation(.easeInOut(duration: 0.15)) { copied = true }
+            Task {
+                try? await Task.sleep(for: .seconds(1.5))
+                withAnimation(.easeInOut(duration: 0.15)) { copied = false }
+            }
+        } label: {
+            Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(copied ? .green : .secondary)
+                .frame(width: 22, height: 22)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 5))
+        }
+        .buttonStyle(.plain)
+        .help("Copy code")
+    }
+}
+
 /// A `CodeSyntaxHighlighter` for MarkdownUI that provides basic token-level coloring
 /// (keywords, strings, comments, numbers) for the languages Claude commonly outputs.
 /// No external dependencies — uses NSRegularExpression for tokenization.

@@ -31,6 +31,23 @@ public final class AppDatabase: Sendable {
         try AppDatabase(DatabaseQueue())
     }
 
+    /// Deletes the on-disk database files. Call this on sign-out so the next
+    /// login starts with a clean local cache.
+    public static func destroy() {
+        guard let appSupport = try? FileManager.default.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: false
+        ) else { return }
+        let dir = appSupport.appendingPathComponent("ClawClient")
+        // DatabasePool creates main file + -wal and -shm sidecar files.
+        for suffix in ["db.sqlite", "db.sqlite-wal", "db.sqlite-shm"] {
+            let url = dir.appendingPathComponent(suffix)
+            try? FileManager.default.removeItem(at: url)
+        }
+    }
+
     // MARK: - Async convenience wrappers
 
     public func read<T: Sendable>(

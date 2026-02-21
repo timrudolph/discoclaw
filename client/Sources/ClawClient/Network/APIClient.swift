@@ -134,11 +134,21 @@ public final class APIClient: Sendable {
         try await post("/context-modules", body: CreateContextModuleRequest(name: name, content: content))
     }
 
+    public func deleteContextModule(name: String) async throws {
+        let (data, response) = try await session.data(for: makeRequest("DELETE", "/context-modules/\(name)"))
+        try checkStatus(response, data: data)
+    }
+
     // MARK: - Persona
 
     public func updatePersona(conversationId: String, soul: String?, identity: String?, userBio: String?) async throws -> ConversationPersona {
         try await put("/conversations/\(conversationId)/persona",
                       body: UpdatePersonaRequest(soul: soul, identity: identity, userBio: userBio))
+    }
+
+    public func resetConversationSession(conversationId: String) async throws {
+        let (data, response) = try await session.data(for: makeRequest("POST", "/conversations/\(conversationId)/reset-session"))
+        try checkStatus(response, data: data)
     }
 
     public func getConversationModules(conversationId: String) async throws -> ConversationModulesResponse {
@@ -192,6 +202,13 @@ public final class APIClient: Sendable {
         return try await get(path)
     }
 
+    public func cancelMessage(conversationId: String) async throws {
+        let (data, response) = try await session.data(
+            for: makeRequest("POST", "/conversations/\(conversationId)/cancel")
+        )
+        try checkStatus(response, data: data)
+    }
+
     public func sendMessage(
         conversationId: String,
         content: String,
@@ -201,6 +218,13 @@ public final class APIClient: Sendable {
             "/conversations/\(conversationId)/messages",
             body: SendMessageRequest(content: content, clientId: clientId)
         )
+    }
+
+    // MARK: - Search
+
+    public func searchMessages(query: String, limit: Int = 20) async throws -> MessageSearchResponse {
+        let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
+        return try await get("/search?q=\(encoded)&limit=\(limit)")
     }
 
     // MARK: - Sync

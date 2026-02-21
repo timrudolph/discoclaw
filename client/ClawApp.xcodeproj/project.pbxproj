@@ -30,6 +30,7 @@
 		EE54F392D29A4BD00125D515 /* MarkdownUI in Frameworks */ = {isa = PBXBuildFile; productRef = 8E24E121065FD5BFE33B91F3 /* MarkdownUI */; };
 		F1C69F91DDFC61B2AE35F57C /* ComposeBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EED52C92700063DD1CA4D339 /* ComposeBarView.swift */; };
 		F5827DC65474AFBD27009913 /* WorkspaceFilesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80798ABB8A1B816396AFE0C6 /* WorkspaceFilesView.swift */; };
+		10F63BDCA12946F6AA76F48C /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DEC4E2DC31A4F5699028142 /* SettingsView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -46,6 +47,7 @@
 		72B6AB9360B626D6E5B26399 /* ContextModulesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextModulesView.swift; sourceTree = "<group>"; };
 		7B8660B86D10F3F558EBD32D /* ClawApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClawApp.swift; sourceTree = "<group>"; };
 		80798ABB8A1B816396AFE0C6 /* WorkspaceFilesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceFilesView.swift; sourceTree = "<group>"; };
+		2DEC4E2DC31A4F5699028142 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		969B8CC38CF90D8F7E1B0E24 /* ClawApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ClawApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		9B50C1A52E9662980E49C512 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		9B7CD556CCE0EC230309F915 /* NewConversationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewConversationView.swift; sourceTree = "<group>"; };
@@ -115,6 +117,7 @@
 				48F52D40BFE69395C36D53C2 /* PersonaEditorView.swift */,
 				FB2321F3694E1D8919C0564D /* ToolActivityView.swift */,
 				80798ABB8A1B816396AFE0C6 /* WorkspaceFilesView.swift */,
+				2DEC4E2DC31A4F5699028142 /* SettingsView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -245,6 +248,7 @@
 				DE7186A9624DB45CD0CEF8D3 /* PersonaEditorView.swift in Sources */,
 				BA05E389AAF123FE4A9275BE /* ToolActivityView.swift in Sources */,
 				F5827DC65474AFBD27009913 /* WorkspaceFilesView.swift in Sources */,
+				10F63BDCA12946F6AA76F48C /* SettingsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

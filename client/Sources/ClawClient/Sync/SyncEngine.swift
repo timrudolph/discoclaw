@@ -16,6 +16,9 @@ public final class SyncEngine: ObservableObject {
     @Published public private(set) var isSyncing = false
     /// Active tool labels keyed by assistant message ID — drives UI spinners.
     @Published public private(set) var activeTools: [String: String] = [:]
+    /// Incremented whenever a bead is created or updated via tool call or another session.
+    /// Views observe this to know when to refresh their bead lists.
+    @Published public private(set) var beadsVersion: Int = 0
 
     private let api: APIClient
     private let ws: WebSocketClient
@@ -23,6 +26,7 @@ public final class SyncEngine: ObservableObject {
     private let messageRepo: MessageRepository
 
     private var reconnectTask: Task<Void, Never>?
+    private var reconnectAttempt = 0
 
     public init(
         api: APIClient,
@@ -35,7 +39,10 @@ public final class SyncEngine: ObservableObject {
         self.messageRepo = messages
 
         ws.onEvent = { [weak self] event in self?.handle(event) }
-        ws.onConnect = { [weak self] in self?.isConnected = true }
+        ws.onConnect = { [weak self] in
+            self?.isConnected = true
+            self?.reconnectAttempt = 0
+        }
         ws.onDisconnect = { [weak self] in
             self?.isConnected = false
             self?.scheduleReconnect()
@@ -54,6 +61,17 @@ public final class SyncEngine: ObservableObject {
         reconnectTask = nil
         ws.disconnect()
         isConnected = false
+    }
+
+    /// Called when the app returns to the foreground.
+    /// Immediately reconnects if the socket is down, resetting the backoff counter.
+    public func reconnectIfNeeded() async {
+        guard !isConnected else { return }
+        reconnectTask?.cancel()
+        reconnectTask = nil
+        reconnectAttempt = 0
+        await performSync()
+        connectWebSocket()
     }
 
     // MARK: - Sync
@@ -107,8 +125,12 @@ public final class SyncEngine: ObservableObject {
 
     private func scheduleReconnect() {
         reconnectTask?.cancel()
+        let attempt = reconnectAttempt
+        reconnectAttempt += 1
+        // Exponential backoff: 1, 2, 4, 8, 16, 30 (capped) seconds.
+        let delay = min(pow(2.0, Double(attempt)), 30.0)
         reconnectTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(5))
+            try? await Task.sleep(for: .seconds(delay))
             guard let self, !Task.isCancelled else { return }
             await self.performSync()
             self.connectWebSocket()
@@ -151,6 +173,9 @@ public final class SyncEngine: ObservableObject {
         case .conversationUpdated:
             // Metadata changed on another device — pull the delta.
             await performSync()
+
+        case .beadsUpdated:
+            beadsVersion += 1
         }
     }
 }

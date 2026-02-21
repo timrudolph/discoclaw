@@ -8,7 +8,8 @@ export type WsEvent =
   | { type: 'message.error'; messageId: string; conversationId: string; error: string }
   | { type: 'tool.start'; messageId: string; tool: string; label: string }
   | { type: 'tool.end'; messageId: string; tool: string }
-  | { type: 'conversation.updated'; conversationId: string };
+  | { type: 'conversation.updated'; conversationId: string }
+  | { type: 'beads.updated' };
 
 // ─── Hub ─────────────────────────────────────────────────────────────────────
 

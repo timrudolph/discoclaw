@@ -11,6 +11,11 @@ final class ChatViewModel: ObservableObject {
     /// Set when a send fails at the HTTP level. Displayed as a dismissible alert.
     @Published var sendError: String?
 
+    /// True while the most recent assistant message is still streaming.
+    var isStreaming: Bool {
+        messages.last?.role == .assistant && messages.last?.status == .streaming
+    }
+
     let conversationId: String
 
     /// Drive scroll-to-bottom whenever the trailing message's content grows (streaming).
@@ -106,6 +111,17 @@ final class ChatViewModel: ObservableObject {
             // Also surface a persistent alert — the error bubble can be missed or synced away.
             sendError = error.localizedDescription
         }
+    }
+
+    func cancel() async {
+        try? await api.cancelMessage(conversationId: conversationId)
+    }
+
+    /// Delete the failed user message and re-send its content.
+    func retry(message: Message) async {
+        let content = message.content
+        try? await repo.delete(id: message.id)
+        await send(content: content)
     }
 
     /// Load messages older than the current oldest. Returns the id of the current

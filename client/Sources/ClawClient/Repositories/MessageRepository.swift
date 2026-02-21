@@ -165,6 +165,12 @@ public final class MessageRepository {
         }
     }
 
+    public func delete(id: String) async throws {
+        try await db.write { db in
+            try Message.deleteOne(db, key: id)
+        }
+    }
+
     /// Called when the server responds to a POST /messages with { id, seq }.
     /// Promotes the optimistic (client-temp-id) row to the server-assigned id and seq.
     public func confirmOptimistic(clientId: String, serverId: String, seq: Int) async throws {
@@ -181,6 +187,28 @@ public final class MessageRepository {
     }
 
     // MARK: - Observations
+
+    /// Emits a dictionary of conversationId → latest complete Message whenever any
+    /// message changes. Used to populate last-message previews in the conversation list.
+    public func observeLastMessages() -> AnyPublisher<[String: Message], Never> {
+        ValueObservation
+            .tracking { db -> [String: Message] in
+                // One row per conversation: the highest-seq complete message.
+                let messages = try SQLRequest<Message>(sql: """
+                    SELECT * FROM messages
+                    WHERE seq IN (
+                        SELECT MAX(seq) FROM messages
+                        WHERE status = 'complete'
+                        GROUP BY conversationId
+                    )
+                """).fetchAll(db)
+                return Dictionary(messages.map { ($0.conversationId, $0) },
+                                  uniquingKeysWith: { first, _ in first })
+            }
+            .publisher(in: db.writer, scheduling: .immediate)
+            .catch { _ in Just([:]) }
+            .eraseToAnyPublisher()
+    }
 
     /// Emits the full message list for a conversation whenever any message in it changes.
     /// Used by the chat view to reactively update as streaming deltas arrive.

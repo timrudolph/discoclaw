@@ -9,7 +9,6 @@ let package = Package(
     ],
     products: [
         .library(name: "ClawClient", targets: ["ClawClient"]),
-        .executable(name: "ClawApp", targets: ["ClawApp"]),
     ],
     dependencies: [
         .package(url: "https://github.com/groue/GRDB.swift", from: "6.0.0"),
@@ -20,18 +19,12 @@ let package = Package(
             name: "ClawClient",
             dependencies: [
                 .product(name: "GRDB", package: "GRDB.swift"),
+            ],
+            linkerSettings: [
+                .linkedFramework("Security"),
             ]
         ),
-        .executableTarget(
-            name: "ClawApp",
-            dependencies: [
-                "ClawClient",
-                .product(name: "MarkdownUI", package: "swift-markdown-ui"),
-            ],
-            path: "App",
-            exclude: ["README.md"]
-        ),
-        .testTarget(
+.testTarget(
             name: "ClawClientTests",
             dependencies: ["ClawClient"]
         ),

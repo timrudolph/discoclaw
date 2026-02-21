@@ -43,11 +43,31 @@ public final class ConversationRepository {
         }
     }
 
-    /// Bulk upsert — used by the sync engine on app launch.
+    /// Bulk upsert — used by the delta sync engine.
     public func saveAll(_ conversations: [Conversation]) async throws {
         try await db.write { db in
             for conversation in conversations {
                 try conversation.save(db)
+            }
+        }
+    }
+
+    /// Full replace — upserts server records and deletes anything not on the server.
+    /// Used on app launch to make the client exactly match the server.
+    public func replaceAll(_ conversations: [Conversation]) async throws {
+        try await db.write { db in
+            if conversations.isEmpty {
+                try Conversation.deleteAll(db)
+            } else {
+                let ids = conversations.map { $0.id }
+                let placeholders = ids.map { _ in "?" }.joined(separator: ",")
+                try db.execute(
+                    sql: "DELETE FROM conversations WHERE id NOT IN (\(placeholders))",
+                    arguments: StatementArguments(ids)
+                )
+                for conversation in conversations {
+                    try conversation.save(db)
+                }
             }
         }
     }
@@ -59,6 +79,16 @@ public final class ConversationRepository {
     }
 
     // MARK: - Observations
+
+    /// Emits the single conversation whenever its row changes.
+    /// Emits `nil` if the conversation is deleted.
+    public func observe(id: String) -> AnyPublisher<Conversation?, Never> {
+        ValueObservation
+            .tracking { db in try Conversation.fetchOne(db, key: id) }
+            .publisher(in: db.writer, scheduling: .immediate)
+            .catch { _ in Just(nil) }
+            .eraseToAnyPublisher()
+    }
 
     /// Emits the full sorted list whenever any conversation changes.
     /// Schedule on `.immediate` so the first value arrives synchronously

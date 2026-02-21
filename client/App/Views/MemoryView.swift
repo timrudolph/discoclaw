@@ -43,9 +43,15 @@ struct MemoryView: View {
                                 .font(.subheadline)
                         } else {
                             ForEach(items) { item in
-                                HStack {
-                                    Text(item.content)
-                                        .font(.subheadline)
+                                HStack(alignment: .top) {
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(item.content)
+                                            .font(.subheadline)
+                                        Text(Date(timeIntervalSince1970: Double(item.createdAt) / 1000),
+                                             style: .date)
+                                            .font(.caption2)
+                                            .foregroundStyle(.tertiary)
+                                    }
                                     Spacer()
                                     if deleting == item.id {
                                         ProgressView().scaleEffect(0.7)

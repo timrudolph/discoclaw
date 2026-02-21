@@ -2,6 +2,7 @@ import 'dotenv/config';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { Buffer } from 'node:buffer';
 import { fileURLToPath } from 'node:url';
 import Fastify, { type FastifyInstance } from 'fastify';
 import websocketPlugin from '@fastify/websocket';
@@ -9,12 +10,16 @@ import sensible from '@fastify/sensible';
 import pino from 'pino';
 
 import { parseServerConfig } from './config.js';
+import type { ServerConfig } from './config.js';
 import { openDb } from './db.js';
 import { makeAuthHook, generateToken, hashToken } from './auth.js';
 import { WsHub } from './ws.js';
 import { registerConversationRoutes } from './conversations.js';
 import { registerMessageRoutes } from './messages.js';
 import { registerSyncRoutes } from './sync.js';
+import { registerBeadsRoutes } from './beads.js';
+import { registerCronRoutes } from './crons.js';
+import { ServerCronScheduler } from './cron-scheduler.js';
 import { createClaudeCliRuntime } from '../runtime/claude-code-cli.js';
 import type { DeviceRow, UserRow, MemoryItemRow } from './db.js';
 
@@ -44,7 +49,7 @@ const log = pino({ level: process.env.LOG_LEVEL ?? 'info' });
 
 // ─── Config + DB ──────────────────────────────────────────────────────────────
 
-let config;
+let config: ServerConfig;
 try {
   config = parseServerConfig(process.env);
 } catch (err) {
@@ -80,6 +85,11 @@ const runtime = createClaudeCliRuntime({
 // ─── WebSocket hub ────────────────────────────────────────────────────────────
 
 const hub = new WsHub();
+
+// ─── Cron scheduler ───────────────────────────────────────────────────────────
+// Instantiated here (before routes); .start() called after server binds.
+
+const cronScheduler = new ServerCronScheduler(db, hub, runtime, config);
 
 // ─── Fastify app ──────────────────────────────────────────────────────────────
 
@@ -188,6 +198,55 @@ app.delete<{ Params: { deviceId: string } }>(
   },
 );
 
+// ─── Workspace file endpoints (authenticated) ─────────────────────────────────
+
+const WORKSPACE_ALLOWED = new Set(['SOUL.md', 'IDENTITY.md', 'USER.md', 'AGENTS.md', 'MEMORY.md', 'TOOLS.md']);
+
+function workspaceFilePath(filename: string): string | null {
+  if (!WORKSPACE_ALLOWED.has(filename)) return null;
+  return path.join(config.workspaceCwd, filename);
+}
+
+// GET /workspace/files — list workspace files with preview
+app.get('/workspace/files', { preHandler: authHook }, async () => {
+  const files = await Promise.all(
+    [...WORKSPACE_ALLOWED].map(async (name) => {
+      const filePath = path.join(config.workspaceCwd, name);
+      try {
+        const content = await fs.promises.readFile(filePath, 'utf8');
+        const preview = content.split('\n').find(l => l.trim())?.slice(0, 120) ?? '';
+        return { name, exists: true, preview };
+      } catch {
+        return { name, exists: false, preview: '' };
+      }
+    }),
+  );
+  return { files };
+});
+
+// GET /workspace/files/:name — get file content
+app.get<{ Params: { name: string } }>('/workspace/files/:name', { preHandler: authHook }, async (req, reply) => {
+  const filePath = workspaceFilePath(req.params.name);
+  if (!filePath) return reply.forbidden('File not in allowed list');
+  try {
+    const content = await fs.promises.readFile(filePath, 'utf8');
+    return { name: req.params.name, content };
+  } catch {
+    return { name: req.params.name, content: '' };
+  }
+});
+
+// PUT /workspace/files/:name — write file content
+app.put<{ Params: { name: string } }>('/workspace/files/:name', { preHandler: authHook }, async (req, reply) => {
+  const filePath = workspaceFilePath(req.params.name);
+  if (!filePath) return reply.forbidden('File not in allowed list');
+  const { content } = req.body as { content?: string };
+  if (content === undefined) return reply.badRequest('content is required');
+  await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.promises.writeFile(filePath, content, 'utf8');
+  reply.status(204).send();
+});
+
 // ─── Memory REST endpoints (authenticated) ────────────────────────────────────
 
 // GET /memory
@@ -218,6 +277,136 @@ app.delete<{ Params: { id: string } }>('/memory/:id', { preHandler: authHook }, 
   reply.status(204).send();
 });
 
+// ─── Available models (Claude Code model aliases) ─────────────────────────────
+
+const AVAILABLE_MODELS = [
+  { id: 'opus',   label: 'Claude Opus',   description: 'Most capable' },
+  { id: 'sonnet', label: 'Claude Sonnet', description: 'Balanced' },
+  { id: 'haiku',  label: 'Claude Haiku',  description: 'Fast & efficient' },
+] as const;
+
+app.get('/models', { preHandler: authHook }, async () => ({
+  models: AVAILABLE_MODELS,
+  default: config.runtimeModel,
+}));
+
+// ─── Context modules ──────────────────────────────────────────────────────────
+
+// Only the README is excluded — it's documentation, not context.
+// All other .md files (including ops, discord, runtime, etc.) can be attached by the user.
+const CONTEXT_MODULE_BLOCKLIST = new Set(['README.md']);
+
+// GET /context-modules — list available (non-blocked) context modules
+app.get('/context-modules', { preHandler: authHook }, async () => {
+  let files: string[];
+  try {
+    files = await fs.promises.readdir(config.contextDir);
+  } catch {
+    return { modules: [] };
+  }
+  const mdFiles = files
+    .filter((f) => f.endsWith('.md') && !CONTEXT_MODULE_BLOCKLIST.has(f))
+    .sort();
+  const modules = await Promise.all(
+    mdFiles.map(async (name) => {
+      const filePath = path.join(config.contextDir, name);
+      try {
+        const content = await fs.promises.readFile(filePath, 'utf8');
+        const firstHeading = content.split('\n').find((l) => l.startsWith('#'))?.replace(/^#+\s*/, '') ?? name;
+        return { name, label: firstHeading };
+      } catch {
+        return { name, label: name };
+      }
+    }),
+  );
+  return { modules };
+});
+
+// GET /conversations/:id/context-modules
+app.get<{ Params: { id: string } }>(
+  '/conversations/:id/context-modules',
+  { preHandler: authHook },
+  async (req, reply) => {
+    const conv = db
+      .prepare('SELECT context_modules FROM conversations WHERE id = ? AND user_id = ?')
+      .get(req.params.id, req.user.id) as { context_modules: string | null } | undefined;
+    if (!conv) return reply.notFound();
+    return { modules: conv.context_modules ? JSON.parse(conv.context_modules) as string[] : [] };
+  },
+);
+
+// PUT /conversations/:id/context-modules
+app.put<{ Params: { id: string } }>(
+  '/conversations/:id/context-modules',
+  { preHandler: authHook },
+  async (req, reply) => {
+    const { modules } = req.body as { modules?: unknown };
+    if (!Array.isArray(modules)) return reply.badRequest('modules must be an array');
+    const conv = db
+      .prepare('SELECT id FROM conversations WHERE id = ? AND user_id = ?')
+      .get(req.params.id, req.user.id) as { id: string } | undefined;
+    if (!conv) return reply.notFound();
+    db.prepare('UPDATE conversations SET context_modules = ? WHERE id = ?')
+      .run(JSON.stringify(modules), conv.id);
+    reply.status(204).send();
+  },
+);
+
+// POST /context-modules — create a new context module file
+app.post('/context-modules', { preHandler: authHook }, async (req, reply) => {
+  const { name, content } = req.body as { name?: unknown; content?: unknown };
+  if (typeof name !== 'string' || !name.trim()) return reply.badRequest('name is required');
+  if (typeof content !== 'string') return reply.badRequest('content is required');
+
+  // Sanitize: allow alphanumeric, hyphens, underscores, dots; force .md extension
+  const baseName = name.trim().replace(/\.md$/i, '');
+  const safeName = baseName.replace(/[^a-zA-Z0-9._-]/g, '-') + '.md';
+
+  if (CONTEXT_MODULE_BLOCKLIST.has(safeName)) return reply.forbidden('reserved name');
+
+  const filePath = path.join(config.contextDir, safeName);
+  try {
+    await fs.promises.access(filePath);
+    return reply.conflict('a module with that name already exists');
+  } catch {
+    // file doesn't exist — proceed
+  }
+
+  await fs.promises.mkdir(config.contextDir, { recursive: true });
+  await fs.promises.writeFile(filePath, content, 'utf8');
+  const firstHeading =
+    content
+      .split('\n')
+      .find((l: string) => l.startsWith('#'))
+      ?.replace(/^#+\s*/, '') ?? safeName;
+  return reply.status(201).send({ name: safeName, label: firstHeading });
+});
+
+// DELETE /context-modules/:name — delete a custom context module file
+app.delete<{ Params: { name: string } }>(
+  '/context-modules/:name',
+  { preHandler: authHook },
+  async (req, reply) => {
+    const { name } = req.params;
+    if (!name.endsWith('.md')) return reply.badRequest('name must end with .md');
+    if (CONTEXT_MODULE_BLOCKLIST.has(name)) return reply.forbidden('reserved name');
+
+    // Sanitize: reject any path traversal
+    if (name.includes('/') || name.includes('\\') || name.startsWith('.')) {
+      return reply.badRequest('invalid name');
+    }
+
+    const filePath = path.join(config.contextDir, name);
+    try {
+      await fs.promises.unlink(filePath);
+    } catch (err: unknown) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return reply.notFound();
+      throw err;
+    }
+    return reply.status(204).send();
+  },
+);
+
 // ─── Authenticated routes ─────────────────────────────────────────────────────
 
 // Apply auth to all remaining routes via a scoped plugin
@@ -227,6 +416,49 @@ await app.register(async (authed) => {
   registerConversationRoutes(authed, db);
   registerMessageRoutes(authed, db, hub, runtime, config);
   registerSyncRoutes(authed, db);
+  registerBeadsRoutes(authed, db, hub);
+  registerCronRoutes(authed, db, cronScheduler);
+
+  // GET /search?q=<text>&limit=20 — full-text search across message content
+  authed.get('/search', async (req) => {
+    const { q, limit = '20' } = req.query as { q?: string; limit?: string };
+    const query = q?.trim() ?? '';
+    if (!query) return { results: [] };
+
+    const maxRows = Math.min(Math.max(1, parseInt(limit, 10) || 20), 100);
+    const pattern = `%${query}%`;
+
+    const rows = db.prepare(`
+      SELECT m.id, m.conversation_id, m.content, m.role, m.seq, m.created_at,
+             c.title AS conversation_title
+        FROM messages m
+        JOIN conversations c ON c.id = m.conversation_id
+       WHERE c.user_id = ?
+         AND m.status = 'complete'
+         AND m.content LIKE ?
+       ORDER BY m.created_at DESC
+       LIMIT ?
+    `).all(req.user.id, pattern, maxRows) as Array<{
+      id: string;
+      conversation_id: string;
+      content: string;
+      role: string;
+      seq: number;
+      created_at: number;
+      conversation_title: string | null;
+    }>;
+
+    return {
+      results: rows.map((r) => ({
+        messageId: r.id,
+        conversationId: r.conversation_id,
+        conversationTitle: r.conversation_title ?? 'Untitled',
+        role: r.role,
+        snippet: r.content.slice(0, 200),
+        createdAt: r.created_at,
+      })),
+    };
+  });
 
   // WebSocket — receives auth via ?token= query param (iOS URLSessionWebSocketTask
   // doesn't support custom headers on the upgrade request).
@@ -272,6 +504,7 @@ await app.register(async (authed) => {
 
 const shutdown = async () => {
   log.info('shutting down');
+  cronScheduler.stop();
   await app.close();
   db.close();
   process.exit(0);
@@ -283,6 +516,7 @@ try {
   await app.listen({ port: config.port, host: config.host });
   const scheme = httpsOptions ? 'https' : 'http';
   log.info({ port: config.port, host: config.host, tls: !!httpsOptions, setupToken: !!config.setupToken }, 'server started');
+  cronScheduler.start();
   if (!config.setupToken) log.warn('SETUP_TOKEN not set — registration is disabled');
   if (!httpsOptions) log.warn('TLS not configured — traffic is unencrypted (set TLS_CERT and TLS_KEY)');
   // Ensure protected conversations exist for any already-registered users.

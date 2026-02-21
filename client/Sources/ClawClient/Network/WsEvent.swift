@@ -14,6 +14,8 @@ public enum WsEvent: Sendable {
     case toolEnd(messageId: String, tool: String)
     /// A conversation's metadata changed (title, archived) on another device.
     case conversationUpdated(conversationId: String)
+    /// A bead was created or updated (by a tool call or another session).
+    case beadsUpdated
 }
 
 extension WsEvent {
@@ -71,6 +73,9 @@ extension WsEvent {
         case "conversation.updated":
             guard let conversationId = json["conversationId"] as? String else { return nil }
             return .conversationUpdated(conversationId: conversationId)
+
+        case "beads.updated":
+            return .beadsUpdated
 
         default:
             return nil

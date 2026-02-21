@@ -401,3 +401,20 @@ public struct SyncResponse: Decodable {
         }
     }
 }
+
+// MARK: - Message search
+
+public struct MessageSearchResponse: Decodable {
+    public let results: [SearchResult]
+
+    public struct SearchResult: Decodable, Identifiable {
+        public let messageId: String
+        public let conversationId: String
+        public let conversationTitle: String
+        public let role: String
+        public let snippet: String
+        public let createdAt: Int
+
+        public var id: String { messageId }
+    }
+}
