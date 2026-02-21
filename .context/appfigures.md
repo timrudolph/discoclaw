@@ -1,7 +1,7 @@
 # Appfigures — App Store Analytics API
 
-REST API at `https://api.appfigures.com/v2/`. Data for NimbleBit's full portfolio:
-downloads, revenue, ratings, reviews, and rankings across Apple App Store and Google Play.
+REST API at `https://api.appfigures.com/v2/`. Tracks downloads, revenue, ratings,
+reviews, and rankings across Apple App Store and Google Play for your app portfolio.
 
 ## Auth
 
@@ -16,37 +16,28 @@ Every request needs both headers:
 
 Load env vars before calling:
 ```bash
-export $(grep 'APPFIGURES' /Users/ceres/discoclaw/.env | xargs)
+export $(grep 'APPFIGURES' .env | xargs)
 ```
 
 ## Quick Reference
 
 ```bash
 # Base setup (run once per shell)
-export $(grep 'APPFIGURES' /Users/ceres/discoclaw/.env | xargs)
+export $(grep 'APPFIGURES' .env | xargs)
 AF="curl -s -H \"Authorization: Bearer $APPFIGURES_TOKEN\" -H \"X-Client-Key: $APPFIGURES_CLIENT_KEY\""
 BASE="https://api.appfigures.com/v2"
 ```
 
 ## Key Product IDs (Apps Only)
 
-| Game | Apple ID | Google Play ID |
-|------|----------|----------------|
-| Pocket Frogs | 6293456 | 280329864376 |
-| Pocket Planes | 212280778 | 334474379517 |
-| Pocket Trains | 36570540245 | 36134072219 |
-| Pocket Trucks | 337102257565 | 337089023621 |
-| Tiny Tower | 6543700 | 190839415791 |
-| Tiny Tower Classic | 338130294207 | — |
-| Tiny Tower Vegas | 40182286179 | 40163732446 |
-| Bit City | 280101630582 | 276259749908 |
-| Sky Burger | 5897157 | 214121192 |
-| Disco Zoo | 39892812947 | 39987833231 |
-| LEGO Tower | 281346644645 | 281289944467 |
-| Pixel Shelter | 338339529151 | 338170283215 |
-| Capitals | 337419974910 | — |
+Find your product IDs via `GET /products/mine` (see Products section below), or look them
+up in the Appfigures dashboard. Add your apps here for quick reference:
 
-Use comma-separated IDs to query multiple: `products=6293456,280329864376`
+| App | Apple ID | Google Play ID |
+|-----|----------|----------------|
+| My App | 1234567 | 9876543210 |
+
+Use comma-separated IDs to query multiple: `products=1234567,9876543210`
 
 ## Endpoints
 
@@ -187,15 +178,15 @@ curl ... "$BASE/ranks/snapshots/today/US/6014?top=100&pretty=true"
 ## Common Recipes
 
 ```bash
-# "How did Pocket Frogs do last week?" (both stores)
-curl ... "$BASE/reports/sales?group_by=products&start_date=-7d&products=6293456,280329864376&pretty=true"
-curl ... "$BASE/reports/revenue?group_by=products&start_date=-7d&products=6293456,280329864376&pretty=true"
+# "How did My App do last week?" (both stores)
+curl ... "$BASE/reports/sales?group_by=products&start_date=-7d&products=<apple_id>,<google_id>&pretty=true"
+curl ... "$BASE/reports/revenue?group_by=products&start_date=-7d&products=<apple_id>,<google_id>&pretty=true"
 
-# "Show me recent 1-star reviews for Pocket Planes"
-curl ... "$BASE/reviews?products=212280778,334474379517&stars=1&count=10&pretty=true"
+# "Show me recent 1-star reviews"
+curl ... "$BASE/reviews?products=<apple_id>,<google_id>&stars=1&count=10&pretty=true"
 
-# "Revenue trend for Tiny Tower this month"
-curl ... "$BASE/reports/revenue?group_by=dates&start_date=-30d&granularity=daily&products=6543700,190839415791&pretty=true"
+# "Revenue trend this month"
+curl ... "$BASE/reports/revenue?group_by=dates&start_date=-30d&granularity=daily&products=<apple_id>,<google_id>&pretty=true"
 
 # "Portfolio overview last 7 days" (all apps — omit products param)
 curl ... "$BASE/reports/revenue?group_by=products&start_date=-7d&pretty=true"

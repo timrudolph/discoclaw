@@ -55,7 +55,7 @@ CREATE TABLE users (
 CREATE TABLE devices (
   id          TEXT PRIMARY KEY,  -- UUID
   user_id     TEXT NOT NULL REFERENCES users(id),
-  name        TEXT,              -- "Tim's iPhone 16"
+  name        TEXT,              -- "My iPhone 16"
   platform    TEXT,              -- "ios" | "macos"
   token_hash  TEXT NOT NULL,     -- SHA-256 of bearer token
   last_seen   INTEGER,
@@ -259,8 +259,10 @@ Features the Discord bot has that the native client doesn't yet. Ordered roughly
   - `!memory remember <text>`, `!memory forget <text>`, `!memory show`
   - Mirrors `.context/memory.md` architecture; store in server SQLite, inject via `buildPrompt()`
   - Memory view in sidebar menu; REST endpoints for manage/add/delete
-- [ ] Workspace file viewer/editor (SOUL.md, IDENTITY.md, USER.md, AGENTS.md, MEMORY.md)
+- [x] Workspace file viewer/editor (SOUL.md, IDENTITY.md, USER.md, AGENTS.md, MEMORY.md)
   - Read/edit the `workspace/` files that shape the PA's personality
+  - Server: GET/PUT /workspace/files/:name; GET /workspace/files list with previews
+  - Client: WorkspaceFilesView (file list with icons + preview), WorkspaceFileEditorView (monospace TextEditor with Save)
 - [x] Session continuity — persist `claude_session_id` per conversation so Claude Code resumes its session rather than starting fresh each turn
 - [ ] Push notifications (APNs) for completed assistant responses when app is backgrounded
 - [x] File attachment — paperclip button opens file picker; content appended as code block in compose bar
@@ -270,13 +272,25 @@ Features the Discord bot has that the native client doesn't yet. Ordered roughly
 
 ### Complex (significant feature parity)
 
-- [ ] Beads integration — view, create, update, close `bd` tasks from native app
-  - Replaces the Discord thread-backed beads UI with a native list view
-  - Hook into the existing `bd` CLI the same way the Discord bot does
-- [ ] Cron / scheduled prompts — heartbeat check-ins, daily summaries
-  - Port the `DISCOCLAW_CRON_ENABLED` system to fire server-side on a schedule
-  - Results delivered to the native client via WebSocket (or APNs if backgrounded)
-- [ ] Appfigures analytics — expose App Store / Play Store data via chat in native app
-  - Currently only available through the Discord bot (`.context/appfigures.md`)
-- [ ] Context module awareness — let the user toggle which `.context/*.md` files are active for a conversation, similar to how the Discord bot loads modules per task
-- [ ] Multi-runtime support — the Discord bot uses `RuntimeAdapter`; native server is currently Claude-only; add ability to switch model/runtime per conversation
+- [x] Beads integration — view, create, update, close `bd` tasks from native app
+  - Server: GET/POST /beads, GET/PATCH /beads/:id, POST /beads/:id/close, POST /beads/:id/labels
+  - Client: BeadsListView (status filter tabs, tag labels), BeadDetailView (status picker, inline close/edit)
+  - Navigation: sidebar mode switcher between Chats and Beads (footer button + back button)
+- [x] Cron / scheduled prompts — heartbeat check-ins, daily summaries
+  - Server: `server_cron_jobs` table (migration v5), `ServerCronScheduler` wraps croner, fires `invokeRuntime`
+  - REST: GET/POST /crons, PATCH/DELETE /crons/:id (toggle enabled, update schedule/prompt)
+  - Client: CronJobsView (list + toggle + delete), CronJobCreateView (schedule presets + custom cron expr + timezone)
+  - Accessible from sidebar ⋯ menu → "Scheduled Prompts"
+- [x] Appfigures analytics — expose App Store / Play Store data via chat in native app
+  - Server injects `.context/appfigures.md` into every prompt when `APPFIGURES_TOKEN` + `APPFIGURES_CLIENT_KEY` are set
+  - Claude's Bash/WebFetch tools handle the API calls; no dedicated UI needed
+- [x] Context module awareness — let the user toggle which `.context/*.md` files are active for a conversation, similar to how the Discord bot loads modules per task
+  - DB: `context_modules` column on conversations (migration v6); JSON array of filenames
+  - Server: `GET /context-modules` (list non-blocked modules), `GET/PUT /conversations/:id/context-modules`
+  - Server injects active module content into `buildPrompt()` with path-traversal safety check
+  - Client: `ContextModulesView` (toggle list), accessible via chat toolbar → "Context Modules"
+- [x] Multi-runtime support — the Discord bot uses `RuntimeAdapter`; native server is currently Claude-only; add ability to switch model/runtime per conversation
+  - DB: `model_override` column on conversations (migration v7)
+  - Server: `GET /models` returns available Claude model aliases; PATCH conversations accepts `modelOverride`
+  - Runtime bridge uses `conversation.model_override ?? config.runtimeModel` when invoking
+  - Client: model picker in conversation context menu; active model badge shown in row

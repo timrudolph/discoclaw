@@ -1,6 +1,6 @@
 name: ClawApp
 options:
-  bundleIdPrefix: com.nimblebit
+  bundleIdPrefix: app.discoclaw
   deploymentTarget:
     macOS: "14.0"
     iOS: "17.0"
@@ -29,7 +29,7 @@ targets:
         product: MarkdownUI
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.nimblebit.ClawApp
+        PRODUCT_BUNDLE_IDENTIFIER: app.discoclaw.ClawApp
         SWIFT_VERSION: "5.9"
         MACOSX_DEPLOYMENT_TARGET: "14.0"
         CODE_SIGN_STYLE: Automatic
@@ -53,7 +53,7 @@ targets:
         product: MarkdownUI
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.nimblebit.ClawApp
+        PRODUCT_BUNDLE_IDENTIFIER: app.discoclaw.ClawApp
         SWIFT_VERSION: "5.9"
         IPHONEOS_DEPLOYMENT_TARGET: "17.0"
         CODE_SIGN_STYLE: Automatic

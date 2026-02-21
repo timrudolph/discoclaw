@@ -19,7 +19,7 @@ if [[ ! -d "$APP/Contents/MacOS" ]]; then
     <key>CFBundleExecutable</key>
     <string>ClawApp</string>
     <key>CFBundleIdentifier</key>
-    <string>com.nimblebit.clawapp</string>
+    <string>app.discoclaw.ClawApp</string>
     <key>CFBundleName</key>
     <string>ClawApp</string>
     <key>CFBundlePackageType</key>

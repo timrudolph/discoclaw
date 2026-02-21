@@ -1,5 +1,24 @@
 # dev.md — Development
 
+## macOS Client (ClawApp)
+
+The Swift/SwiftUI macOS client lives in `client/`. Always build it from the project root — the output `.app` goes to the **project root** (`./ClawApp.app`).
+
+```bash
+pnpm build:client   # build Xcode project → copies ClawApp.app to project root
+pnpm open:client    # open ClawApp.app from project root
+```
+
+Derived data is written to `.client-build/` (gitignored). To build and immediately open:
+```bash
+pnpm build:client && pnpm open:client
+```
+
+If you need to add new Swift source files, regenerate the Xcode project first:
+```bash
+cd client && xcodegen generate && cd ..
+```
+
 ## Install / Build / Run
 
 ```bash

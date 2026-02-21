@@ -19,7 +19,7 @@ public struct SessionConfig: Codable, Sendable {
 }
 
 extension SessionConfig {
-    private static let service = "com.nimblebit.discoclaw"
+    private static let service = "app.discoclaw.client"
     private static let account = "session"
     private static let legacyKey = "clawclient.session"
 
