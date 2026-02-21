@@ -201,113 +201,143 @@ type StreamParams = {
   sessionId: string;
 };
 
+/** Returns true if the error is a Claude CLI session-ID conflict. */
+function isSessionConflictError(msg: string): boolean {
+  return msg.includes('Session ID') && msg.includes('already in use');
+}
+
 function streamInBackground(params: StreamParams): void {
-  void (async () => {
-    const { db, hub, runtime, config, conversation, assistantId, assistantSeq, prompt, sessionId } = params;
-    const userId = conversation.user_id;
-    let fullContent = '';
-    // Tracks whether the runtime emitted an error event. The runtime always follows
-    // an error with a done event (for cleanup), but we must not treat that done as
-    // a successful completion — it would overwrite the error state in the DB and on
-    // connected clients, making the error flash and disappear.
-    let hadError = false;
+  void doStream(params, /* isRetry */ false);
+}
 
-    // Mark streaming
+/**
+ * Core streaming loop. On a session-ID conflict (two clients open the same
+ * conversation simultaneously) it rotates to a fresh session ID and retries
+ * once transparently, so the user never sees the error.
+ */
+async function doStream(params: StreamParams, isRetry: boolean): Promise<void> {
+  const { db, hub, runtime, config, conversation, assistantId, assistantSeq, prompt, sessionId } = params;
+  const userId = conversation.user_id;
+  let fullContent = '';
+  // The runtime always emits done after error as a cleanup signal.
+  // Track this so the done handler doesn't overwrite the error state.
+  let hadError = false;
+
+  if (!isRetry) {
+    // Mark streaming on first attempt only — retry reuses the existing row.
     db.prepare("UPDATE messages SET status = 'streaming' WHERE id = ?").run(assistantId);
+  }
 
-    try {
-      const events = runtime.invoke({
-        prompt,
-        model: conversation.model_override ?? config.runtimeModel,
-        cwd: config.workspaceCwd,
-        sessionId,
-        tools: config.runtimeTools,
-        timeoutMs: config.runtimeTimeoutMs,
-      });
+  try {
+    const events = runtime.invoke({
+      prompt,
+      model: conversation.model_override ?? config.runtimeModel,
+      cwd: config.workspaceCwd,
+      sessionId,
+      tools: config.runtimeTools,
+      timeoutMs: config.runtimeTimeoutMs,
+    });
 
-      for await (const event of events) {
-        switch (event.type) {
-          case 'text_delta':
-            fullContent += event.text;
-            db.prepare(
-              'UPDATE messages SET content = content || ? WHERE id = ?',
-            ).run(event.text, assistantId);
-            hub.broadcast(userId, {
-              type: 'message.delta',
-              messageId: assistantId,
-              conversationId: conversation.id,
-              delta: event.text,
-              seq: assistantSeq,
-            });
-            break;
+    for await (const event of events) {
+      switch (event.type) {
+        case 'text_delta':
+          fullContent += event.text;
+          db.prepare(
+            'UPDATE messages SET content = content || ? WHERE id = ?',
+          ).run(event.text, assistantId);
+          hub.broadcast(userId, {
+            type: 'message.delta',
+            messageId: assistantId,
+            conversationId: conversation.id,
+            delta: event.text,
+            seq: assistantSeq,
+          });
+          break;
 
-          case 'tool_start':
-            hub.broadcast(userId, {
-              type: 'tool.start',
-              messageId: assistantId,
-              tool: event.name,
-              label: toolLabel(event.name),
-            });
-            break;
+        case 'tool_start':
+          hub.broadcast(userId, {
+            type: 'tool.start',
+            messageId: assistantId,
+            tool: event.name,
+            label: toolLabel(event.name),
+          });
+          break;
 
-          case 'tool_end':
-            hub.broadcast(userId, {
-              type: 'tool.end',
-              messageId: assistantId,
-              tool: event.name,
-            });
-            break;
+        case 'tool_end':
+          hub.broadcast(userId, {
+            type: 'tool.end',
+            messageId: assistantId,
+            tool: event.name,
+          });
+          break;
 
-          case 'done': {
-            // Skip: the runtime emits done after every error event as a cleanup signal.
-            // Treating it as a completion would wipe the error state.
-            if (hadError) break;
+        case 'done': {
+          // Skip: the runtime emits done after every error event as a cleanup
+          // signal. Treating it as a completion would wipe the error state.
+          if (hadError) break;
 
-            const completedAt = Date.now();
+          const completedAt = Date.now();
+          db.prepare(`
+            UPDATE messages SET status = 'complete', completed_at = ? WHERE id = ?
+          `).run(completedAt, assistantId);
+          db.prepare(
+            'UPDATE conversations SET updated_at = ? WHERE id = ?',
+          ).run(completedAt, conversation.id);
+          hub.broadcast(userId, {
+            type: 'message.complete',
+            messageId: assistantId,
+            conversationId: conversation.id,
+            content: fullContent,
+            seq: assistantSeq,
+          });
+          break;
+        }
+
+        case 'error': {
+          // Session conflict: rotate to a fresh session ID and retry once.
+          // This handles multiple clients having the same conversation open
+          // simultaneously — the second request hits "already in use" and
+          // recovers without the user ever seeing the error.
+          if (!isRetry && isSessionConflictError(event.message)) {
+            const newSessionId = crypto.randomUUID();
+            db.prepare('UPDATE conversations SET claude_session_id = ? WHERE id = ?')
+              .run(newSessionId, conversation.id);
+            // Reset the assistant message so the retry starts fresh.
             db.prepare(`
-              UPDATE messages SET status = 'complete', completed_at = ? WHERE id = ?
-            `).run(completedAt, assistantId);
-            db.prepare(
-              'UPDATE conversations SET updated_at = ? WHERE id = ?',
-            ).run(completedAt, conversation.id);
-            hub.broadcast(userId, {
-              type: 'message.complete',
-              messageId: assistantId,
-              conversationId: conversation.id,
-              content: fullContent,
-              seq: assistantSeq,
-            });
-            break;
+              UPDATE messages SET status = 'streaming', content = '', error = NULL WHERE id = ?
+            `).run(assistantId);
+            // Return from this loop — the for-await break exits cleanly.
+            // doStream will be called again with the new session ID.
+            void doStream({ ...params, sessionId: newSessionId }, true);
+            return;
           }
 
-          case 'error': {
-            hadError = true;
-            const retryAt = rateLimitRetryAt(event.message);
-            const storedError = retryAt ? `rate_limit:${retryAt}` : event.message;
-            db.prepare(`
-              UPDATE messages SET status = 'error', error = ? WHERE id = ?
-            `).run(storedError, assistantId);
-            hub.broadcast(userId, {
-              type: 'message.error',
-              messageId: assistantId,
-              conversationId: conversation.id,
-              error: storedError,
-            });
-            break;
-          }
+          hadError = true;
+          const retryAt = rateLimitRetryAt(event.message);
+          const storedError = retryAt ? `rate_limit:${retryAt}` : event.message;
+          db.prepare(`
+            UPDATE messages SET status = 'error', error = ? WHERE id = ?
+          `).run(storedError, assistantId);
+          hub.broadcast(userId, {
+            type: 'message.error',
+            messageId: assistantId,
+            conversationId: conversation.id,
+            error: storedError,
+          });
+          break;
         }
       }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      db.prepare(`
-        UPDATE messages SET status = 'error', error = ? WHERE id = ?
-      `).run(msg, assistantId);
-      hub.broadcast(userId, {
-        type: 'message.error',
-        messageId: assistantId,
-        conversationId: conversation.id,
-        error: msg,
-      });
     }
-  })();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    db.prepare(`
+      UPDATE messages SET status = 'error', error = ? WHERE id = ?
+    `).run(msg, assistantId);
+    hub.broadcast(userId, {
+      type: 'message.error',
+      messageId: assistantId,
+      conversationId: conversation.id,
+      error: msg,
+    });
+  }
 }
