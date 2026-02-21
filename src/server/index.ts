@@ -29,18 +29,71 @@ const PROTECTED_CONVERSATIONS: Record<string, string> = {
   journal: 'Journal',
 };
 
+type ConversationDefaults = {
+  assistantName: string;
+  accentColor: string;
+  soul: string;
+  identity: string;
+};
+
+const PROTECTED_CONVERSATION_DEFAULTS: Record<string, ConversationDefaults> = {
+  general: {
+    assistantName: 'Claw',
+    accentColor:   '#5B8EE6',
+    soul: `You are a calm, capable, and honest thinking partner. \
+You help the user think clearly, remember things, and act effectively. \
+You have a light touch — you don't over-explain or moralise. \
+You give direct answers, ask good questions, and flag concerns without drama.`,
+    identity: `Your name is Claw. You are relaxed and direct. \
+You adapt your register to the user's — casual when they're casual, \
+precise when they need precision. You're genuinely interested in helping, \
+not in performing helpfulness.`,
+  },
+  tasks: {
+    assistantName: 'Tasks',
+    accentColor:   '#4CAF7D',
+    soul: `You are a sharp, reliable task-tracking partner. \
+You keep the list accurate, call out blockers, and celebrate progress without nagging. \
+Your job is to make the user's intentions concrete and trackable. \
+Keep commentary brief and focused on outcomes.`,
+    identity: `Your name is Tasks. You are organised and efficient. \
+You speak in short sentences. Always end your response with the current \
+full checklist formatted as a markdown checklist with [ ] and [x].`,
+  },
+  journal: {
+    assistantName: 'Journal',
+    accentColor:   '#B07CC6',
+    soul: `You are a thoughtful, non-judgmental reflective companion. \
+You help the user understand themselves — their patterns, feelings, decisions, and growth. \
+You hold space without projecting. You ask questions that open things up rather than close them down. \
+You never rush to solutions.`,
+    identity: `Your name is Journal. You write with warmth and care. \
+You reflect back what the user shares and gently invite them to go deeper. \
+This is their space — you are here to witness and illuminate, not to advise or fix.`,
+  },
+};
+
 /** Idempotently create a protected conversation of a given kind for a user. */
 function ensureProtectedConversation(userId: string, kind: string): void {
   const exists = db
     .prepare('SELECT id FROM conversations WHERE user_id = ? AND kind = ?')
     .get(userId, kind);
   if (exists) return;
-  const title = PROTECTED_CONVERSATIONS[kind] ?? kind;
+  const title    = PROTECTED_CONVERSATIONS[kind] ?? kind;
+  const defaults = PROTECTED_CONVERSATION_DEFAULTS[kind];
   const now = Date.now();
   db.prepare(`
-    INSERT INTO conversations (id, user_id, title, created_at, updated_at, is_protected, kind)
-    VALUES (?, ?, ?, ?, ?, 1, ?)
-  `).run(crypto.randomUUID(), userId, title, now, now, kind);
+    INSERT INTO conversations
+      (id, user_id, title, created_at, updated_at, is_protected, kind,
+       assistant_name, accent_color, soul, identity)
+    VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
+  `).run(
+    crypto.randomUUID(), userId, title, now, now, kind,
+    defaults?.assistantName ?? null,
+    defaults?.accentColor   ?? null,
+    defaults?.soul          ?? null,
+    defaults?.identity      ?? null,
+  );
   log.info({ userId, kind }, 'server:protected-conversation:created');
 }
 
@@ -362,6 +415,44 @@ app.delete<{ Params: { id: string } }>('/memory/:id', { preHandler: authHook }, 
   const row = db
     .prepare('SELECT id FROM memory_items WHERE id = ? AND user_id = ? AND deprecated_at IS NULL')
     .get(req.params.id, req.user.id) as { id: string } | undefined;
+  if (!row) return reply.notFound();
+  db.prepare('UPDATE memory_items SET deprecated_at = ? WHERE id = ?').run(Date.now(), row.id);
+  reply.status(204).send();
+});
+
+// ─── Conversation memory endpoints (authenticated) ────────────────────────────
+
+// GET /conversations/:id/memory
+app.get<{ Params: { id: string } }>('/conversations/:id/memory', { preHandler: authHook }, async (req, reply) => {
+  const conv = db
+    .prepare('SELECT id FROM conversations WHERE id = ? AND user_id = ?')
+    .get(req.params.id, req.user.id) as { id: string } | undefined;
+  if (!conv) return reply.notFound();
+  const items = db
+    .prepare('SELECT * FROM memory_items WHERE conversation_id = ? AND deprecated_at IS NULL ORDER BY created_at ASC')
+    .all(req.params.id) as MemoryItemRow[];
+  return { items: items.map(m => ({ id: m.id, content: m.content, createdAt: m.created_at })) };
+});
+
+// POST /conversations/:id/memory
+app.post<{ Params: { id: string } }>('/conversations/:id/memory', { preHandler: authHook }, async (req, reply) => {
+  const conv = db
+    .prepare('SELECT id FROM conversations WHERE id = ? AND user_id = ?')
+    .get(req.params.id, req.user.id) as { id: string } | undefined;
+  if (!conv) return reply.notFound();
+  const { content } = req.body as { content?: string };
+  if (!content?.trim()) return reply.badRequest('content is required');
+  const id = crypto.randomUUID();
+  db.prepare('INSERT INTO memory_items (id, user_id, conversation_id, content, created_at) VALUES (?, ?, ?, ?, ?)')
+    .run(id, req.user.id, req.params.id, content.trim(), Date.now());
+  reply.status(201).send({ id, content: content.trim() });
+});
+
+// DELETE /conversations/:id/memory/:itemId
+app.delete<{ Params: { id: string; itemId: string } }>('/conversations/:id/memory/:itemId', { preHandler: authHook }, async (req, reply) => {
+  const row = db
+    .prepare('SELECT id FROM memory_items WHERE id = ? AND conversation_id = ? AND deprecated_at IS NULL')
+    .get(req.params.itemId, req.params.id) as { id: string } | undefined;
   if (!row) return reply.notFound();
   db.prepare('UPDATE memory_items SET deprecated_at = ? WHERE id = ?').run(Date.now(), row.id);
   reply.status(204).send();

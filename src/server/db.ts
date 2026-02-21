@@ -88,6 +88,7 @@ export type CronJobRow = {
 export type MemoryItemRow = {
   id: string;
   user_id: string;
+  conversation_id: string | null;   // null = global; set = scoped to that conversation
   content: string;
   created_at: number;
   deprecated_at: number | null;
@@ -123,6 +124,7 @@ function migrate(db: Db): void {
 
   const migrations: [number, () => void][] = [
     [0, () => v0(db)],
+    [1, () => v1(db)],
   ];
 
   for (const [version, run] of migrations) {
@@ -234,5 +236,12 @@ function v0(db: Db): void {
     );
 
     CREATE INDEX idx_beads_user_status ON beads(user_id, status);
+  `);
+}
+
+function v1(db: Db): void {
+  db.exec(`
+    ALTER TABLE memory_items ADD COLUMN conversation_id TEXT REFERENCES conversations(id) ON DELETE CASCADE;
+    CREATE INDEX idx_memory_conv ON memory_items(conversation_id, deprecated_at);
   `);
 }

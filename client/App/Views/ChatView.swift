@@ -13,6 +13,11 @@ struct ChatView: View {
     @State private var atBottom = true
     @State private var showingContextModules = false
     @State private var showingPersonaEditor = false
+    @State private var showingChatMemory = false
+
+    // Editable conversation title (macOS binding form makes the box auto-size to fit)
+    @State private var conversationTitle: String
+    @State private var titleSaveTask: Task<Void, Never>? = nil
 
     // Avatar + identity state
     @State private var userImage: Image? = nil
@@ -25,6 +30,7 @@ struct ChatView: View {
         conversation?.assistantName?.isEmpty == false ? conversation!.assistantName! : "Assistant"
     }
 
+
     init(conversationId: String, conversation: Conversation?, messageRepo: MessageRepository, api: APIClient) {
         self.conversationId = conversationId
         self.conversation = conversation
@@ -33,6 +39,7 @@ struct ChatView: View {
             wrappedValue: ChatViewModel(conversationId: conversationId, repo: messageRepo, api: api)
         )
         _draftText = State(initialValue: UserDefaults.standard.string(forKey: "draft.\(conversationId)") ?? "")
+        _conversationTitle = State(initialValue: conversation?.title ?? "Chat")
     }
 
     var body: some View {
@@ -47,28 +54,28 @@ struct ChatView: View {
                 onStop: { Task { await viewModel.cancel() } }
             )
         }
-        .navigationTitle(conversation?.title ?? "Chat")
+        #if os(macOS)
+        .navigationTitle($conversationTitle)
+        #else
+        .navigationTitle(conversationTitle)
+        #endif
         .toolbar {
-            // Custom principal (center) title: assistant avatar + name
-            ToolbarItem(placement: .principal) {
-                Button { showingPersonaEditor = true } label: {
-                    HStack(spacing: 6) {
-                        assistantAvatarCircle(size: 26)
-                        Text(assistantName)
-                            .font(.headline)
-                            .foregroundStyle(.primary)
-                    }
-                }
-                .buttonStyle(.plain)
-            }
-            ToolbarItem(placement: .primaryAction) {
-                ShareLink(item: exportText, subject: Text(conversation?.title ?? "Chat")) {
-                    Label("Export", systemImage: "square.and.arrow.up")
-                }
-                .disabled(viewModel.messages.isEmpty)
-            }
+            // Custom principal (center) title: assistant avatar + name.
+            // On macOS we measure the text with AppKit and set an explicit frame
+            // width — the only approach that reliably tells the toolbar item how
+            // wide to be, bypassing NSHostingView intrinsicContentSize issues.
             ToolbarItem(placement: .primaryAction) {
                 Menu {
+                    ShareLink(item: exportText, subject: Text(conversation?.title ?? "Chat")) {
+                        Label("Export", systemImage: "square.and.arrow.up")
+                    }
+                    .disabled(viewModel.messages.isEmpty)
+                    Divider()
+                    Button {
+                        showingChatMemory = true
+                    } label: {
+                        Label("Chat Memory", systemImage: "brain")
+                    }
                     Button {
                         showingContextModules = true
                     } label: {
@@ -83,6 +90,9 @@ struct ChatView: View {
                     Label("More", systemImage: "ellipsis.circle")
                 }
             }
+        }
+        .sheet(isPresented: $showingChatMemory) {
+            MemoryView(api: api, conversationId: conversationId)
         }
         .sheet(isPresented: $showingContextModules) {
             ContextModulesView(api: api, conversationId: conversationId)
@@ -108,39 +118,23 @@ struct ChatView: View {
         .task(id: conversationId) {
             await loadAvatars()
         }
+        // Sync title when the conversation record is updated externally
+        .onChange(of: conversation?.title) { _, newTitle in
+            guard let newTitle, newTitle != conversationTitle else { return }
+            conversationTitle = newTitle
+        }
+        // Debounce-save title edits
+        .onChange(of: conversationTitle) { _, newValue in
+            titleSaveTask?.cancel()
+            titleSaveTask = Task {
+                try? await Task.sleep(for: .milliseconds(600))
+                guard !Task.isCancelled else { return }
+                _ = try? await api.updateConversation(id: conversationId, title: newValue.isEmpty ? nil : newValue)
+            }
+        }
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
-    }
-
-    // MARK: - Assistant avatar circle (toolbar + typing indicator)
-
-    @ViewBuilder
-    private func assistantAvatarCircle(size: CGFloat) -> some View {
-        let accent = conversation?.accentSwiftUIColor
-        ZStack {
-            Circle()
-                .fill(avatarBackground(name: assistantName, accent: accent))
-                .frame(width: size, height: size)
-            if let img = assistantImage {
-                img
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: size, height: size)
-                    .clipShape(Circle())
-            } else {
-                Text(String(assistantName.prefix(1)).uppercased())
-                    .font(.system(size: size * 0.45, weight: .semibold))
-                    .foregroundStyle(.white)
-            }
-        }
-        .frame(width: size, height: size)
-    }
-
-    private func avatarBackground(name: String, accent: Color?) -> Color {
-        if let accent { return accent.opacity(0.8) }
-        let hue = Double(abs(name.hashValue) % 360) / 360.0
-        return Color(hue: hue, saturation: 0.5, brightness: 0.7)
     }
 
     // MARK: - Avatar loading
@@ -230,7 +224,9 @@ struct ChatView: View {
                                 accentColor: message.role == .user ? nil : conversation?.accentSwiftUIColor,
                                 onRetry: (message.role == .user && message.status == .error)
                                     ? { Task { await viewModel.retry(message: message) } }
-                                    : nil
+                                    : nil,
+                                api: api,
+                                conversationId: conversationId
                             )
                             .padding(.horizontal)
                             .id(message.id)

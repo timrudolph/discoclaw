@@ -82,7 +82,7 @@ export function registerMessageRoutes(
     db.prepare('UPDATE conversations SET updated_at = ? WHERE id = ?').run(now, conv.id);
 
     // Handle !memory commands locally — no Claude invocation needed
-    const memoryResponse = handleMemoryCommand(db, req.user.id, trimmed);
+    const memoryResponse = handleMemoryCommand(db, req.user.id, conv.id, trimmed);
     if (memoryResponse !== null) {
       const assistantId = insertAssistantMessage(db, conv.id, memoryResponse);
       hub.broadcast(req.user.id, {
@@ -124,8 +124,9 @@ export function registerMessageRoutes(
 /**
  * Handles `!memory` commands. Returns the response string to send as an
  * assistant message, or null if this is not a memory command.
+ * Memory items are scoped to the conversation (not global).
  */
-function handleMemoryCommand(db: Db, userId: string, content: string): string | null {
+function handleMemoryCommand(db: Db, userId: string, conversationId: string, content: string): string | null {
   if (!content.startsWith('!memory')) return null;
 
   const rest = content.slice('!memory'.length).trim();
@@ -134,8 +135,8 @@ function handleMemoryCommand(db: Db, userId: string, content: string): string | 
     const text = rest.slice('remember '.length).trim();
     if (!text) return 'Nothing to remember — try: `!memory remember <text>`';
     db.prepare(
-      'INSERT INTO memory_items (id, user_id, content, created_at) VALUES (?, ?, ?, ?)',
-    ).run(crypto.randomUUID(), userId, text, Date.now());
+      'INSERT INTO memory_items (id, user_id, conversation_id, content, created_at) VALUES (?, ?, ?, ?, ?)',
+    ).run(crypto.randomUUID(), userId, conversationId, text, Date.now());
     return `Remembered: "${text}"`;
   }
 
@@ -143,10 +144,10 @@ function handleMemoryCommand(db: Db, userId: string, content: string): string | 
     const substr = rest.slice('forget '.length).trim().toLowerCase();
     if (!substr) return 'Nothing to forget — try: `!memory forget <substring>`';
     const items = db
-      .prepare('SELECT * FROM memory_items WHERE user_id = ? AND deprecated_at IS NULL')
-      .all(userId) as MemoryItemRow[];
+      .prepare('SELECT * FROM memory_items WHERE conversation_id = ? AND deprecated_at IS NULL')
+      .all(conversationId) as MemoryItemRow[];
     const matches = items.filter((i) => i.content.toLowerCase().includes(substr));
-    if (matches.length === 0) return `No active memory items match "${substr}"`;
+    if (matches.length === 0) return `No chat memory items match "${substr}"`;
     const now = Date.now();
     for (const m of matches) {
       db.prepare('UPDATE memory_items SET deprecated_at = ? WHERE id = ?').run(now, m.id);
@@ -156,16 +157,16 @@ function handleMemoryCommand(db: Db, userId: string, content: string): string | 
 
   if (rest === 'show' || rest === '') {
     const items = db
-      .prepare('SELECT * FROM memory_items WHERE user_id = ? AND deprecated_at IS NULL ORDER BY created_at ASC')
-      .all(userId) as MemoryItemRow[];
-    if (items.length === 0) return 'No memory items yet. Use `!memory remember <text>` to add one.';
+      .prepare('SELECT * FROM memory_items WHERE conversation_id = ? AND deprecated_at IS NULL ORDER BY created_at ASC')
+      .all(conversationId) as MemoryItemRow[];
+    if (items.length === 0) return 'No chat memory yet. Use `!memory remember <text>` to add one.';
     const lines = items.map((i, idx) => `${idx + 1}. ${i.content}`);
-    return `**Memory (${items.length} item${items.length === 1 ? '' : 's'})**\n\n${lines.join('\n')}`;
+    return `**Chat Memory (${items.length} item${items.length === 1 ? '' : 's'})**\n\n${lines.join('\n')}`;
   }
 
   return [
     '**Memory commands:**',
-    '- `!memory remember <text>` — save a fact',
+    '- `!memory remember <text>` — save a fact to this chat',
     '- `!memory forget <substring>` — remove matching items',
     '- `!memory show` — list all items',
   ].join('\n');

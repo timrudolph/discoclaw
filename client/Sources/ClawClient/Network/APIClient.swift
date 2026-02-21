@@ -138,7 +138,7 @@ public final class APIClient: Sendable {
         try checkStatus(response, data: data)
     }
 
-    // MARK: - Memory
+    // MARK: - Memory (global)
 
     public func listMemory() async throws -> MemoryListResponse {
         try await get("/memory")
@@ -150,6 +150,21 @@ public final class APIClient: Sendable {
 
     public func deleteMemory(id: String) async throws {
         let (data, response) = try await session.data(for: makeRequest("DELETE", "/memory/\(id)"))
+        try checkStatus(response, data: data)
+    }
+
+    // MARK: - Memory (per-conversation)
+
+    public func listConversationMemory(conversationId: String) async throws -> MemoryListResponse {
+        try await get("/conversations/\(conversationId)/memory")
+    }
+
+    public func addConversationMemory(conversationId: String, content: String) async throws -> AddMemoryResponse {
+        try await post("/conversations/\(conversationId)/memory", body: AddMemoryRequest(content: content))
+    }
+
+    public func deleteConversationMemory(conversationId: String, id: String) async throws {
+        let (data, response) = try await session.data(for: makeRequest("DELETE", "/conversations/\(conversationId)/memory/\(id)"))
         try checkStatus(response, data: data)
     }
 

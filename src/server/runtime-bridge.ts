@@ -76,34 +76,62 @@ const KIND_SYSTEM_PREFIX: Record<string, string> = {
   ].join(' '),
 };
 
+/** Read a workspace file, returning its trimmed content or null if missing/empty. */
+async function readWorkspaceFile(workspaceCwd: string, name: string): Promise<string | null> {
+  try {
+    const content = await fs.promises.readFile(path.join(workspaceCwd, name), 'utf8');
+    const trimmed = content.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Build the prompt for a new turn, injecting recent conversation history and memory. */
 function buildPrompt(
   history: MessageRow[],
   userContent: string,
   kind: string | null,
-  memoryItems: MemoryItemRow[],
+  globalMemoryItems: MemoryItemRow[],
+  conversationMemoryItems: MemoryItemRow[],
   appfiguresContext: string | null,
   contextModulesContent: string,
   persona: { soul: string | null; identity: string | null; userBio: string | null },
+  workspace: { soul: string | null; identity: string | null; userBio: string | null; memory: string | null },
 ): string {
   const MAX_HISTORY = 20;
   const recent = history.slice(-MAX_HISTORY);
 
-  // Per-conversation identity files (SOUL.md / IDENTITY.md / USER.md).
+  // Persona: per-conversation fields take precedence; workspace files are the global fallback.
   // Injected at the very top so they frame everything that follows.
+  const effectiveSoul     = persona.soul     ?? workspace.soul;
+  const effectiveIdentity = persona.identity ?? workspace.identity;
+  const effectiveUserBio  = persona.userBio  ?? workspace.userBio;
+
   let personaBlock = '';
-  if (persona.soul)     personaBlock += `${persona.soul.trim()}\n\n`;
-  if (persona.identity) personaBlock += `${persona.identity.trim()}\n\n`;
-  if (persona.userBio)  personaBlock += `${persona.userBio.trim()}\n\n`;
-  if (personaBlock)     personaBlock += '---\n\n';
+  if (effectiveSoul)     personaBlock += `${effectiveSoul.trim()}\n\n`;
+  if (effectiveIdentity) personaBlock += `${effectiveIdentity.trim()}\n\n`;
+  if (effectiveUserBio)  personaBlock += `${effectiveUserBio.trim()}\n\n`;
+  if (personaBlock)      personaBlock += '---\n\n';
+
+  // Workspace MEMORY.md — free-form scratchpad, always injected if present.
+  const workspaceMemoryBlock = workspace.memory
+    ? `Workspace notes:\n\n${workspace.memory}\n\n---\n\n`
+    : '';
 
   const systemPrefix = kind && KIND_SYSTEM_PREFIX[kind]
     ? `${KIND_SYSTEM_PREFIX[kind]}\n\n---\n\n`
     : '';
 
-  const memoryBlock = memoryItems.length > 0
-    ? `Durable memory (${memoryItems.length} item${memoryItems.length === 1 ? '' : 's'}):\n${
-        memoryItems.map((m) => `- ${m.content}`).join('\n')
+  const memoryBlock = globalMemoryItems.length > 0
+    ? `Global memory (${globalMemoryItems.length} item${globalMemoryItems.length === 1 ? '' : 's'}):\n${
+        globalMemoryItems.map((m) => `- ${m.content}`).join('\n')
+      }\n\n---\n\n`
+    : '';
+
+  const chatMemoryBlock = conversationMemoryItems.length > 0
+    ? `Chat memory (${conversationMemoryItems.length} item${conversationMemoryItems.length === 1 ? '' : 's'}):\n${
+        conversationMemoryItems.map((m) => `- ${m.content}`).join('\n')
       }\n\n---\n\n`
     : '';
 
@@ -111,7 +139,7 @@ function buildPrompt(
     ? `${appfiguresContext}\n\n---\n\n`
     : '';
 
-  if (recent.length === 0) return personaBlock + systemPrefix + memoryBlock + appfiguresBlock + contextModulesContent + userContent;
+  if (recent.length === 0) return personaBlock + systemPrefix + memoryBlock + workspaceMemoryBlock + appfiguresBlock + contextModulesContent + userContent;
 
   const lines = recent
     .filter((m) => m.status === 'complete' && m.content.trim())
@@ -119,7 +147,7 @@ function buildPrompt(
     .join('\n\n');
 
   const historyBlock = lines ? `Recent conversation:\n\n${lines}\n\n---\n\n` : '';
-  return personaBlock + systemPrefix + memoryBlock + appfiguresBlock + contextModulesContent + historyBlock + userContent;
+  return personaBlock + systemPrefix + memoryBlock + workspaceMemoryBlock + appfiguresBlock + contextModulesContent + historyBlock + userContent;
 }
 
 export type InvokeOptions = {
@@ -146,10 +174,14 @@ export async function invokeRuntime(opts: InvokeOptions): Promise<string> {
     )
     .all(conversation.id) as MessageRow[];
 
-  // Load active memory items for this user
+  // Load active memory items for this user (global) and this conversation (scoped)
   const memoryItems = db
-    .prepare('SELECT * FROM memory_items WHERE user_id = ? AND deprecated_at IS NULL ORDER BY created_at ASC')
+    .prepare('SELECT * FROM memory_items WHERE user_id = ? AND conversation_id IS NULL AND deprecated_at IS NULL ORDER BY created_at ASC')
     .all(conversation.user_id) as MemoryItemRow[];
+
+  const conversationMemoryItems = db
+    .prepare('SELECT * FROM memory_items WHERE conversation_id = ? AND deprecated_at IS NULL ORDER BY created_at ASC')
+    .all(conversation.id) as MemoryItemRow[];
 
   // Inject Appfigures API context when credentials are configured
   const appfiguresContext = config.appfiguresToken && config.appfiguresClientKey
@@ -175,7 +207,17 @@ export async function invokeRuntime(opts: InvokeOptions): Promise<string> {
     identity: conversation.identity ?? null,
     userBio:  conversation.user_bio ?? null,
   };
-  const prompt = buildPrompt(history, opts.userMessageContent, conversation.kind, memoryItems, appfiguresContext, contextModulesContent, persona);
+
+  // Load workspace files as global defaults (per-conversation persona takes precedence).
+  const [wsSoul, wsIdentity, wsUserBio, wsMemory] = await Promise.all([
+    readWorkspaceFile(config.workspaceCwd, 'SOUL.md'),
+    readWorkspaceFile(config.workspaceCwd, 'IDENTITY.md'),
+    readWorkspaceFile(config.workspaceCwd, 'USER.md'),
+    readWorkspaceFile(config.workspaceCwd, 'MEMORY.md'),
+  ]);
+  const workspace = { soul: wsSoul, identity: wsIdentity, userBio: wsUserBio, memory: wsMemory };
+
+  const prompt = buildPrompt(history, opts.userMessageContent, conversation.kind, memoryItems, conversationMemoryItems, appfiguresContext, contextModulesContent, persona, workspace);
   const assistantId = crypto.randomUUID();
   const assistantSeq = nextSeq();
   const now = Date.now();

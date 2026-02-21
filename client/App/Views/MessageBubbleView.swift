@@ -14,8 +14,14 @@ struct MessageBubbleView: View {
     var accentColor: Color? = nil
     /// Called when the user taps "Retry" on a failed user message.
     var onRetry: (() -> Void)? = nil
+    /// API client for "Save to Memory" — nil disables the option.
+    var api: APIClient? = nil
+    /// If set, "Save to Memory" saves to this conversation's chat memory.
+    var conversationId: String? = nil
 
     @State private var showTimestamp = false
+    @State private var isSavingMemory = false
+    @State private var memorySaved = false
 
     private var isUser: Bool { message.role == .user }
     private var isStreaming: Bool { message.status == .streaming }
@@ -167,6 +173,18 @@ struct MessageBubbleView: View {
                     Button { copyToClipboard(message.content) } label: {
                         Label("Copy", systemImage: "doc.on.doc")
                     }
+                    if let api {
+                        Button {
+                            Task { await saveToMemory(api: api) }
+                        } label: {
+                            if memorySaved {
+                                Label("Saved to Memory", systemImage: "checkmark")
+                            } else {
+                                Label("Save to Memory", systemImage: "brain")
+                            }
+                        }
+                        .disabled(isSavingMemory)
+                    }
                 }
                 if isError, let errText = message.error, !errText.isEmpty {
                     Button { copyToClipboard(errText) } label: {
@@ -260,5 +278,19 @@ struct MessageBubbleView: View {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
         #endif
+    }
+
+    private func saveToMemory(api: APIClient) async {
+        guard !message.content.isEmpty else { return }
+        isSavingMemory = true
+        if let convId = conversationId {
+            _ = try? await api.addConversationMemory(conversationId: convId, content: message.content)
+        } else {
+            _ = try? await api.addMemory(content: message.content)
+        }
+        isSavingMemory = false
+        memorySaved = true
+        try? await Task.sleep(for: .seconds(2))
+        memorySaved = false
     }
 }
