@@ -4,7 +4,11 @@ extension AppDatabase {
     var migrator: DatabaseMigrator {
         var m = DatabaseMigrator()
 
-        m.registerMigration("v1_initial") { db in
+        // Wipe and recreate whenever the migration list changes.
+        // Fine for development; flip to false before shipping.
+        m.eraseDatabaseOnSchemaChange = true
+
+        m.registerMigration("v0_initial") { db in
             try db.create(table: "conversations") { t in
                 t.primaryKey("id", .text)
                 t.column("title", .text)
@@ -15,6 +19,11 @@ extension AppDatabase {
                 t.column("isProtected", .boolean).notNull().defaults(to: false)
                 t.column("kind", .text)
                 t.column("modelOverride", .text)
+                t.column("soul", .text)
+                t.column("identity", .text)
+                t.column("userBio", .text)
+                t.column("assistantName", .text)
+                t.column("accentColor", .text)
             }
 
             try db.create(table: "messages") { t in
@@ -33,21 +42,6 @@ extension AppDatabase {
 
             try db.create(indexOn: "messages", columns: ["conversationId", "seq"])
             try db.create(indexOn: "messages", columns: ["seq"])
-        }
-
-        m.registerMigration("v2_conversation_persona") { db in
-            try db.alter(table: "conversations") { t in
-                t.add(column: "soul",     .text)
-                t.add(column: "identity", .text)
-                t.add(column: "userBio",  .text)
-            }
-        }
-
-        m.registerMigration("v3_conversation_visual_identity") { db in
-            try db.alter(table: "conversations") { t in
-                t.add(column: "assistantName", .text)
-                t.add(column: "accentColor",   .text)
-            }
         }
 
         return m

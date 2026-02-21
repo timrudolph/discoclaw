@@ -122,10 +122,7 @@ function migrate(db: Db): void {
   );
 
   const migrations: [number, () => void][] = [
-    [1, () => v1(db)],
-    [2, () => v2(db)],
-    [3, () => v3(db)],
-    [4, () => v4(db)],
+    [0, () => v0(db)],
   ];
 
   for (const [version, run] of migrations) {
@@ -137,7 +134,7 @@ function migrate(db: Db): void {
   }
 }
 
-function v1(db: Db): void {
+function v0(db: Db): void {
   db.exec(`
     CREATE TABLE users (
       id         TEXT PRIMARY KEY,
@@ -166,7 +163,12 @@ function v1(db: Db): void {
       is_protected      INTEGER NOT NULL DEFAULT 0,
       kind              TEXT,
       context_modules   TEXT,
-      model_override    TEXT
+      model_override    TEXT,
+      soul              TEXT,
+      identity          TEXT,
+      user_bio          TEXT,
+      assistant_name    TEXT,
+      accent_color      TEXT
     );
 
     CREATE TABLE messages (
@@ -215,11 +217,7 @@ function v1(db: Db): void {
     );
 
     CREATE INDEX idx_cron_user ON server_cron_jobs(user_id);
-  `);
-}
 
-function v2(db: Db): void {
-  db.exec(`
     CREATE TABLE beads (
       id           TEXT PRIMARY KEY,
       user_id      TEXT NOT NULL REFERENCES users(id),
@@ -236,20 +234,5 @@ function v2(db: Db): void {
     );
 
     CREATE INDEX idx_beads_user_status ON beads(user_id, status);
-  `);
-}
-
-function v3(db: Db): void {
-  db.exec(`
-    ALTER TABLE conversations ADD COLUMN soul     TEXT;
-    ALTER TABLE conversations ADD COLUMN identity TEXT;
-    ALTER TABLE conversations ADD COLUMN user_bio TEXT;
-  `);
-}
-
-function v4(db: Db): void {
-  db.exec(`
-    ALTER TABLE conversations ADD COLUMN assistant_name TEXT;
-    ALTER TABLE conversations ADD COLUMN accent_color   TEXT;
   `);
 }
