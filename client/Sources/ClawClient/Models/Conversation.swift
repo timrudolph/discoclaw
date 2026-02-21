@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import GRDB
 
 public struct Conversation: Codable, Identifiable, Equatable, Sendable {
@@ -17,6 +18,10 @@ public struct Conversation: Codable, Identifiable, Equatable, Sendable {
     public var identity: String?
     /// Per-conversation USER.md content.
     public var userBio: String?
+    /// Display name for the assistant in this conversation.
+    public var assistantName: String?
+    /// Hex accent color for the assistant's bubbles, e.g. "#A08060".
+    public var accentColor: String?
 
     public var isArchived: Bool { archivedAt != nil }
 
@@ -28,6 +33,19 @@ public struct Conversation: Codable, Identifiable, Equatable, Sendable {
         case "journal": return "book.closed.fill"
         default:        return nil
         }
+    }
+
+    /// Parses `accentColor` hex string (e.g. "#A08060") into a SwiftUI Color.
+    public var accentSwiftUIColor: Color? {
+        guard let hex = accentColor else { return nil }
+        var str = hex.trimmingCharacters(in: .whitespacesAndNewlines)
+        if str.hasPrefix("#") { str = String(str.dropFirst()) }
+        guard str.count == 6, let value = Int(str, radix: 16) else { return nil }
+        return Color(
+            red:   Double((value >> 16) & 0xFF) / 255,
+            green: Double((value >>  8) & 0xFF) / 255,
+            blue:  Double( value        & 0xFF) / 255
+        )
     }
 
     public init(
@@ -42,7 +60,9 @@ public struct Conversation: Codable, Identifiable, Equatable, Sendable {
         modelOverride: String? = nil,
         soul: String? = nil,
         identity: String? = nil,
-        userBio: String? = nil
+        userBio: String? = nil,
+        assistantName: String? = nil,
+        accentColor: String? = nil
     ) {
         self.id = id
         self.title = title
@@ -56,6 +76,8 @@ public struct Conversation: Codable, Identifiable, Equatable, Sendable {
         self.soul = soul
         self.identity = identity
         self.userBio = userBio
+        self.assistantName = assistantName
+        self.accentColor = accentColor
     }
 }
 

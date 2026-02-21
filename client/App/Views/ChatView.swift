@@ -14,7 +14,16 @@ struct ChatView: View {
     @State private var showingContextModules = false
     @State private var showingPersonaEditor = false
 
+    // Avatar + identity state
+    @State private var userImage: Image? = nil
+    @State private var assistantImage: Image? = nil
+    @State private var userName: String = ""
+
     private var draftKey: String { "draft.\(conversationId)" }
+
+    private var assistantName: String {
+        conversation?.assistantName?.isEmpty == false ? conversation!.assistantName! : "Assistant"
+    }
 
     init(conversationId: String, conversation: Conversation?, messageRepo: MessageRepository, api: APIClient) {
         self.conversationId = conversationId
@@ -23,7 +32,6 @@ struct ChatView: View {
         _viewModel = StateObject(
             wrappedValue: ChatViewModel(conversationId: conversationId, repo: messageRepo, api: api)
         )
-        // Restore persisted draft (empty string if none).
         _draftText = State(initialValue: UserDefaults.standard.string(forKey: "draft.\(conversationId)") ?? "")
     }
 
@@ -41,6 +49,18 @@ struct ChatView: View {
         }
         .navigationTitle(conversation?.title ?? "Chat")
         .toolbar {
+            // Custom principal (center) title: assistant avatar + name
+            ToolbarItem(placement: .principal) {
+                Button { showingPersonaEditor = true } label: {
+                    HStack(spacing: 6) {
+                        assistantAvatarCircle(size: 26)
+                        Text(assistantName)
+                            .font(.headline)
+                            .foregroundStyle(.primary)
+                    }
+                }
+                .buttonStyle(.plain)
+            }
             ToolbarItem(placement: .primaryAction) {
                 ShareLink(item: exportText, subject: Text(conversation?.title ?? "Chat")) {
                     Label("Export", systemImage: "square.and.arrow.up")
@@ -71,7 +91,6 @@ struct ChatView: View {
             PersonaEditorView(api: api, conversationId: conversationId, conversation: conversation)
         }
         .onChange(of: draftText) { _, newValue in
-            // Persist draft so it survives conversation switches.
             if newValue.isEmpty {
                 UserDefaults.standard.removeObject(forKey: draftKey)
             } else {
@@ -86,8 +105,67 @@ struct ChatView: View {
         } message: {
             Text(viewModel.sendError ?? "")
         }
+        .task(id: conversationId) {
+            await loadAvatars()
+        }
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
+        #endif
+    }
+
+    // MARK: - Assistant avatar circle (toolbar + typing indicator)
+
+    @ViewBuilder
+    private func assistantAvatarCircle(size: CGFloat) -> some View {
+        let accent = conversation?.accentSwiftUIColor
+        ZStack {
+            Circle()
+                .fill(avatarBackground(name: assistantName, accent: accent))
+                .frame(width: size, height: size)
+            if let img = assistantImage {
+                img
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: size, height: size)
+                    .clipShape(Circle())
+            } else {
+                Text(String(assistantName.prefix(1)).uppercased())
+                    .font(.system(size: size * 0.45, weight: .semibold))
+                    .foregroundStyle(.white)
+            }
+        }
+        .frame(width: size, height: size)
+    }
+
+    private func avatarBackground(name: String, accent: Color?) -> Color {
+        if let accent { return accent.opacity(0.8) }
+        let hue = Double(abs(name.hashValue) % 360) / 360.0
+        return Color(hue: hue, saturation: 0.5, brightness: 0.7)
+    }
+
+    // MARK: - Avatar loading
+
+    private func loadAvatars() async {
+        async let userFetch = try? api.fetchUserAvatar()
+        async let assistantFetch = try? api.fetchAssistantAvatar(conversationId: conversationId)
+        async let meFetch = try? api.me()
+
+        let (userData, assistantData, me) = await (userFetch, assistantFetch, meFetch)
+
+        if let name = me?.user.name, !name.isEmpty {
+            userName = name
+        }
+        if let data = userData { userImage = imageFromData(data) }
+        if let data = assistantData { assistantImage = imageFromData(data) }
+    }
+
+    private func imageFromData(_ data: Data) -> Image? {
+        #if os(iOS)
+        guard let ui = UIImage(data: data) else { return nil }
+        return Image(uiImage: ui)
+        #else
+        guard let ns = NSImage(data: data) else { return nil }
+        return Image(nsImage: ns)
         #endif
     }
 
@@ -98,7 +176,7 @@ struct ChatView: View {
         let dateStr = Date().formatted(date: .long, time: .omitted)
         var lines = ["# \(title)", "Exported \(dateStr)", "", "---", ""]
         for message in viewModel.messages where message.status == .complete {
-            let role = message.role == .user ? "You" : "Assistant"
+            let role = message.role == .user ? "You" : assistantName
             let time = message.createdAt.formatted(date: .omitted, time: .shortened)
             lines.append("[\(role) — \(time)]")
             lines.append(message.content)
@@ -114,7 +192,6 @@ struct ChatView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: 10) {
-                        // "Load earlier messages" button at the top.
                         if viewModel.hasMore {
                             Button {
                                 Task {
@@ -146,6 +223,11 @@ struct ChatView: View {
                             MessageBubbleView(
                                 message: message,
                                 toolLabel: syncEngine.activeTools[message.id],
+                                authorName: message.role == .user
+                                    ? (userName.isEmpty ? nil : userName)
+                                    : assistantName,
+                                authorImage: message.role == .user ? userImage : assistantImage,
+                                accentColor: message.role == .user ? nil : conversation?.accentSwiftUIColor,
                                 onRetry: (message.role == .user && message.status == .error)
                                     ? { Task { await viewModel.retry(message: message) } }
                                     : nil
@@ -153,7 +235,7 @@ struct ChatView: View {
                             .padding(.horizontal)
                             .id(message.id)
                         }
-                        // Invisible anchor at the bottom; also used to detect if we're at the bottom.
+                        // Invisible anchor at the bottom.
                         Color.clear
                             .frame(height: 1)
                             .id("__bottom__")

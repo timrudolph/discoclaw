@@ -48,6 +48,8 @@ export function registerSyncRoutes(app: FastifyInstance, db: Db): void {
         isProtected: c.is_protected === 1,
         kind: c.kind ?? undefined,
         modelOverride: c.model_override ?? undefined,
+        assistantName: c.assistant_name ?? undefined,
+        accentColor: c.accent_color ?? undefined,
         claudeSessionId: c.claude_session_id ?? undefined,
         updatedAt: c.updated_at,
         createdAt: c.created_at,

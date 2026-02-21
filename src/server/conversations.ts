@@ -37,6 +37,8 @@ export function registerConversationRoutes(app: FastifyInstance, db: Db): void {
       isProtected: r.is_protected === 1,
       kind: r.kind ?? undefined,
       modelOverride: r.model_override ?? undefined,
+      assistantName: r.assistant_name ?? undefined,
+      accentColor: r.accent_color ?? undefined,
       updatedAt: r.updated_at,
       createdAt: r.created_at,
       archivedAt: r.archived_at ?? undefined,
@@ -83,6 +85,8 @@ export function registerConversationRoutes(app: FastifyInstance, db: Db): void {
       isProtected: row.is_protected === 1,
       kind: row.kind ?? undefined,
       modelOverride: row.model_override ?? undefined,
+      assistantName: row.assistant_name ?? undefined,
+      accentColor: row.accent_color ?? undefined,
       claudeSessionId: row.claude_session_id,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
@@ -102,7 +106,13 @@ export function registerConversationRoutes(app: FastifyInstance, db: Db): void {
       return reply.status(403).send({ error: 'Cannot archive a protected conversation.' });
     }
 
-    const { title, archived, modelOverride } = req.body as { title?: string; archived?: boolean; modelOverride?: string | null };
+    const { title, archived, modelOverride, assistantName, accentColor } = req.body as {
+      title?: string;
+      archived?: boolean;
+      modelOverride?: string | null;
+      assistantName?: string | null;
+      accentColor?: string | null;
+    };
     const now = Date.now();
 
     if (title !== undefined) {
@@ -118,6 +128,14 @@ export function registerConversationRoutes(app: FastifyInstance, db: Db): void {
       db.prepare('UPDATE conversations SET model_override = ?, updated_at = ? WHERE id = ?')
         .run(modelOverride ?? null, now, row.id);
     }
+    if (assistantName !== undefined) {
+      db.prepare('UPDATE conversations SET assistant_name = ?, updated_at = ? WHERE id = ?')
+        .run(assistantName ?? null, now, row.id);
+    }
+    if (accentColor !== undefined) {
+      db.prepare('UPDATE conversations SET accent_color = ?, updated_at = ? WHERE id = ?')
+        .run(accentColor ?? null, now, row.id);
+    }
 
     const updated = db
       .prepare('SELECT * FROM conversations WHERE id = ?')
@@ -129,6 +147,8 @@ export function registerConversationRoutes(app: FastifyInstance, db: Db): void {
       isProtected: updated.is_protected === 1,
       kind: updated.kind ?? undefined,
       modelOverride: updated.model_override ?? undefined,
+      assistantName: updated.assistant_name ?? undefined,
+      accentColor: updated.accent_color ?? undefined,
       createdAt: updated.created_at,
       updatedAt: updated.updated_at,
       archivedAt: updated.archived_at ?? undefined,

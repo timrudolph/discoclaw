@@ -6,7 +6,13 @@ struct MessageBubbleView: View {
     let message: Message
     /// Non-nil while a tool call is in progress for this message.
     let toolLabel: String?
-    /// Called when the user taps "Retry" on a failed user message. Nil for non-retryable messages.
+    /// Author display name (e.g. assistant name or user name).
+    var authorName: String? = nil
+    /// Pre-resolved author avatar image.
+    var authorImage: Image? = nil
+    /// Accent color for assistant bubbles; nil falls back to secondary fill.
+    var accentColor: Color? = nil
+    /// Called when the user taps "Retry" on a failed user message.
     var onRetry: (() -> Void)? = nil
 
     @State private var showTimestamp = false
@@ -16,10 +22,23 @@ struct MessageBubbleView: View {
     private var isError: Bool { message.status == .error }
 
     var body: some View {
-        HStack(alignment: .bottom, spacing: 0) {
-            if isUser { Spacer(minLength: 52) }
+        HStack(alignment: .top, spacing: 0) {
+            if isUser {
+                Spacer(minLength: 52)
+            } else {
+                avatarCircle
+                Spacer().frame(width: 8)
+            }
 
-            VStack(alignment: isUser ? .trailing : .leading, spacing: 6) {
+            VStack(alignment: isUser ? .trailing : .leading, spacing: 4) {
+                // Author name label
+                if let name = authorName {
+                    Text(name)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 4)
+                }
+
                 // Tool activity pill — shown above the content for assistant messages.
                 if let toolLabel, !isUser {
                     ToolActivityView(label: toolLabel)
@@ -30,27 +49,29 @@ struct MessageBubbleView: View {
                     bubbleContent
                 } else if isStreaming {
                     // Typing indicator while waiting for first delta.
-                    HStack(spacing: 4) {
-                        ForEach(0..<3, id: \.self) { i in
-                            Circle()
-                                .frame(width: 6, height: 6)
-                                .foregroundStyle(.secondary)
-                                .opacity(0.6)
-                                .scaleEffect(isStreaming ? 1 : 0.5)
-                                .animation(
-                                    .easeInOut(duration: 0.6)
-                                    .repeatForever()
-                                    .delay(Double(i) * 0.2),
-                                    value: isStreaming
-                                )
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 4) {
+                            ForEach(0..<3, id: \.self) { i in
+                                Circle()
+                                    .frame(width: 6, height: 6)
+                                    .foregroundStyle(.secondary)
+                                    .opacity(0.6)
+                                    .scaleEffect(isStreaming ? 1 : 0.5)
+                                    .animation(
+                                        .easeInOut(duration: 0.6)
+                                        .repeatForever()
+                                        .delay(Double(i) * 0.2),
+                                        value: isStreaming
+                                    )
+                            }
                         }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 12)
+                        .background(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .fill(assistantBubbleFill)
+                        )
                     }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 12)
-                    .background(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .fill(Color.secondary.opacity(0.12))
-                    )
                 }
 
                 // Inline retry button — shown below a failed user message.
@@ -76,7 +97,12 @@ struct MessageBubbleView: View {
             // Cap width so long paragraphs don't span the full window on wide layouts.
             .frame(maxWidth: 700, alignment: isUser ? .trailing : .leading)
 
-            if !isUser { Spacer(minLength: 52) }
+            if isUser {
+                Spacer().frame(width: 8)
+                avatarCircle
+            } else {
+                Spacer(minLength: 52)
+            }
         }
         .contentShape(Rectangle())
         .simultaneousGesture(
@@ -85,6 +111,45 @@ struct MessageBubbleView: View {
             }
         )
     }
+
+    // MARK: - Avatar circle
+
+    @ViewBuilder
+    private var avatarCircle: some View {
+        ZStack {
+            Circle()
+                .fill(avatarBackground)
+                .frame(width: 36, height: 36)
+            if let image = authorImage {
+                image
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 36, height: 36)
+                    .clipShape(Circle())
+            } else {
+                Text(monogram)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white)
+            }
+        }
+        .frame(width: 36, height: 36)
+    }
+
+    private var monogram: String {
+        guard let name = authorName, !name.isEmpty else { return "?" }
+        return String(name.prefix(1)).uppercased()
+    }
+
+    private var avatarBackground: Color {
+        if let accentColor, !isUser { return accentColor.opacity(0.8) }
+        if isUser { return .accentColor }
+        // Hash-based color for assistant monogram
+        guard let name = authorName, !name.isEmpty else { return .secondary.opacity(0.5) }
+        let hue = Double(abs(name.hashValue) % 360) / 360.0
+        return Color(hue: hue, saturation: 0.5, brightness: 0.7)
+    }
+
+    // MARK: - Bubble content
 
     @ViewBuilder
     private var bubbleContent: some View {
@@ -171,13 +236,15 @@ struct MessageBubbleView: View {
         }
     }
 
+    private var assistantBubbleFill: AnyShapeStyle {
+        if let accentColor { return AnyShapeStyle(accentColor.opacity(0.15)) }
+        return AnyShapeStyle(Color.secondary.opacity(0.12))
+    }
+
     private var bubbleFill: AnyShapeStyle {
         if isError { return AnyShapeStyle(Color.red.opacity(0.15)) }
         if isUser  { return AnyShapeStyle(Color.accentColor) }
-        // Use an explicit adaptive color rather than .regularMaterial — materials
-        // in ScrollView/LazyVStack on macOS often render as opaque dark backgrounds
-        // without the expected vibrancy, producing a "black box" appearance.
-        return AnyShapeStyle(Color.secondary.opacity(0.12))
+        return assistantBubbleFill
     }
 
     private var foregroundColor: Color {

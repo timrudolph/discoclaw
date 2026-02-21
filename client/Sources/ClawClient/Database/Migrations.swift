@@ -43,6 +43,13 @@ extension AppDatabase {
             }
         }
 
+        m.registerMigration("v3_conversation_visual_identity") { db in
+            try db.alter(table: "conversations") { t in
+                t.add(column: "assistantName", .text)
+                t.add(column: "accentColor",   .text)
+            }
+        }
+
         return m
     }
 }

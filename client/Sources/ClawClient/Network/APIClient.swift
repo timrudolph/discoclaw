@@ -31,6 +31,50 @@ public final class APIClient: Sendable {
         try await get("/auth/me")
     }
 
+    public func updateUserProfile(name: String?) async throws {
+        var req = makeRequest("PATCH", "/auth/me")
+        req.httpBody = try JSONEncoder().encode(["name": name])
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let (data, response) = try await session.data(for: req)
+        try checkStatus(response, data: data)
+    }
+
+    // MARK: - Avatars
+
+    public func uploadUserAvatar(_ jpeg: Data) async throws {
+        var req = makeRequest("PUT", "/auth/avatar")
+        req.httpBody = jpeg
+        req.setValue("image/jpeg", forHTTPHeaderField: "Content-Type")
+        let (data, response) = try await session.data(for: req)
+        try checkStatus(response, data: data)
+    }
+
+    public func fetchUserAvatar() async throws -> Data? {
+        let req = makeRequest("GET", "/auth/avatar")
+        let (data, response) = try await session.data(for: req)
+        guard let http = response as? HTTPURLResponse else { return nil }
+        if http.statusCode == 404 { return nil }
+        try checkStatus(response, data: data)
+        return data
+    }
+
+    public func uploadAssistantAvatar(conversationId: String, _ jpeg: Data) async throws {
+        var req = makeRequest("PUT", "/conversations/\(conversationId)/avatar")
+        req.httpBody = jpeg
+        req.setValue("image/jpeg", forHTTPHeaderField: "Content-Type")
+        let (data, response) = try await session.data(for: req)
+        try checkStatus(response, data: data)
+    }
+
+    public func fetchAssistantAvatar(conversationId: String) async throws -> Data? {
+        let req = makeRequest("GET", "/conversations/\(conversationId)/avatar")
+        let (data, response) = try await session.data(for: req)
+        guard let http = response as? HTTPURLResponse else { return nil }
+        if http.statusCode == 404 { return nil }
+        try checkStatus(response, data: data)
+        return data
+    }
+
     // MARK: - Cron jobs
 
     public func listCronJobs() async throws -> CronJobsResponse {
@@ -177,11 +221,19 @@ public final class APIClient: Sendable {
         id: String,
         title: String? = nil,
         archived: Bool? = nil,
-        modelOverride: String?? = nil
+        modelOverride: String?? = nil,
+        assistantName: String?? = nil,
+        accentColor: String?? = nil
     ) async throws -> ConversationDetail {
         try await patch(
             "/conversations/\(id)",
-            body: UpdateConversationRequest(title: title, archived: archived, modelOverride: modelOverride)
+            body: UpdateConversationRequest(
+                title: title,
+                archived: archived,
+                modelOverride: modelOverride,
+                assistantName: assistantName,
+                accentColor: accentColor
+            )
         )
     }
 

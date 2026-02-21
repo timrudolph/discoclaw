@@ -9,6 +9,9 @@ export type ServerConfig = {
   dbPath: string;
   workspaceCwd: string;
 
+  // Context modules directory (.context/)
+  contextDir: string;
+
   // Protected special conversations
   generalConversationEnabled: boolean;
   tasksConversationEnabled: boolean;
@@ -28,6 +31,14 @@ export type ServerConfig = {
   runtimeModel: string;
   runtimeTools: string[];
   runtimeTimeoutMs: number;
+
+  // Appfigures API (optional analytics context injection)
+  appfiguresToken: string | null;
+  appfiguresClientKey: string | null;
+  appfiguresContextPath: string;
+
+  // Avatar storage directory
+  avatarsDir: string;
 };
 
 function str(env: NodeJS.ProcessEnv, key: string, fallback?: string): string {
@@ -56,6 +67,9 @@ function bool(env: NodeJS.ProcessEnv, key: string, fallback: boolean): boolean {
 export function parseServerConfig(env: NodeJS.ProcessEnv): ServerConfig {
   const defaultDbPath = path.join(__dirname, '..', '..', 'data', 'server.db');
   const defaultCwd = path.join(__dirname, '..', '..', 'workspace');
+  const defaultContextDir = path.join(__dirname, '..', '..', '.context');
+  const defaultAppfiguresContextPath = path.join(defaultContextDir, 'appfigures.md');
+  const defaultAvatarsDir = path.join(__dirname, '..', '..', 'data', 'avatars');
   const rawTools = env.RUNTIME_TOOLS?.trim();
   const runtimeTools = rawTools
     ? rawTools.split(/[,\s]+/).map((t) => t.trim()).filter(Boolean)
@@ -80,6 +94,7 @@ export function parseServerConfig(env: NodeJS.ProcessEnv): ServerConfig {
     host: str(env, 'SERVER_HOST', '127.0.0.1'),
     dbPath: str(env, 'SERVER_DB_PATH', defaultDbPath),
     workspaceCwd: str(env, 'WORKSPACE_CWD', defaultCwd),
+    contextDir: str(env, 'SERVER_CONTEXT_DIR', defaultContextDir),
     setupToken: env.SETUP_TOKEN?.trim() || null,
     tlsCert,
     tlsKey,
@@ -89,5 +104,9 @@ export function parseServerConfig(env: NodeJS.ProcessEnv): ServerConfig {
     runtimeModel: str(env, 'RUNTIME_MODEL', 'opus'),
     runtimeTools,
     runtimeTimeoutMs: num(env, 'RUNTIME_TIMEOUT_MS', 10 * 60_000),
+    appfiguresToken: env.APPFIGURES_TOKEN?.trim() || null,
+    appfiguresClientKey: env.APPFIGURES_CLIENT_KEY?.trim() || null,
+    appfiguresContextPath: str(env, 'SERVER_APPFIGURES_CONTEXT', defaultAppfiguresContextPath),
+    avatarsDir: str(env, 'SERVER_AVATARS_DIR', defaultAvatarsDir),
   };
 }

@@ -54,6 +54,8 @@ public struct ConversationListItem: Decodable {
     public let isProtected: Bool?
     public let kind: String?
     public let modelOverride: String?
+    public let assistantName: String?
+    public let accentColor: String?
     public let updatedAt: Int
     public let createdAt: Int
     public let archivedAt: Int?
@@ -72,6 +74,8 @@ public struct ConversationDetail: Decodable {
     public let isProtected: Bool?
     public let kind: String?
     public let modelOverride: String?
+    public let assistantName: String?
+    public let accentColor: String?
     public let claudeSessionId: String?
     public let createdAt: Int
     public let updatedAt: Int
@@ -86,9 +90,21 @@ public struct CreateConversationRequest: Encodable {
 public struct UpdateConversationRequest: Encodable {
     public let title: String?
     public let archived: Bool?
-    public let modelOverride: String??   // Double-optional: nil = don't touch; .some(nil) = clear
-    public init(title: String?, archived: Bool?, modelOverride: String?? = nil) {
-        self.title = title; self.archived = archived; self.modelOverride = modelOverride
+    public let modelOverride: String??    // Double-optional: nil = don't touch; .some(nil) = clear
+    public let assistantName: String??    // Double-optional: nil = don't touch; .some(nil) = clear
+    public let accentColor: String??      // Double-optional: nil = don't touch; .some(nil) = clear
+    public init(
+        title: String? = nil,
+        archived: Bool? = nil,
+        modelOverride: String?? = nil,
+        assistantName: String?? = nil,
+        accentColor: String?? = nil
+    ) {
+        self.title = title
+        self.archived = archived
+        self.modelOverride = modelOverride
+        self.assistantName = assistantName
+        self.accentColor = accentColor
     }
 }
 
@@ -375,6 +391,8 @@ public struct SyncResponse: Decodable {
         public let isProtected: Bool?
         public let kind: String?
         public let modelOverride: String?
+        public let assistantName: String?
+        public let accentColor: String?
         public let claudeSessionId: String?
         public let updatedAt: Int
         public let createdAt: Int
@@ -396,7 +414,9 @@ public struct SyncResponse: Decodable {
                 modelOverride: modelOverride,
                 soul: soul,
                 identity: identity,
-                userBio: userBio
+                userBio: userBio,
+                assistantName: assistantName,
+                accentColor: accentColor
             )
         }
     }

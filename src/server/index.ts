@@ -60,6 +60,9 @@ try {
 const db = openDb(config.dbPath);
 log.info({ dbPath: config.dbPath }, 'database opened');
 
+// Create avatars directory (idempotent)
+fs.mkdirSync(config.avatarsDir, { recursive: true });
+
 // ─── Runtime ──────────────────────────────────────────────────────────────────
 
 const runtime = createClaudeCliRuntime({
@@ -108,6 +111,11 @@ await app.register(sensible);
 await app.register(websocketPlugin);
 
 const authHook = makeAuthHook(db);
+
+// Raw binary parser for avatar image uploads (image/jpeg)
+app.addContentTypeParser('image/jpeg', { parseAs: 'buffer' }, (_req, body, done) => {
+  done(null, body);
+});
 
 // ─── Health (no auth) ─────────────────────────────────────────────────────────
 
@@ -195,6 +203,88 @@ app.delete<{ Params: { deviceId: string } }>(
 
     db.prepare('DELETE FROM devices WHERE id = ?').run(row.id);
     reply.status(204).send();
+  },
+);
+
+// PATCH /auth/me — update the authenticated user's profile (name)
+app.patch('/auth/me', { preHandler: authHook }, async (req) => {
+  const { name } = req.body as { name?: string | null };
+  if (name !== undefined) {
+    db.prepare('UPDATE users SET name = ? WHERE id = ?').run(name ?? null, req.user.id);
+  }
+  const user = db.prepare('SELECT id, name FROM users WHERE id = ?').get(req.user.id) as UserRow;
+  return { user: { id: user.id, name: user.name } };
+});
+
+// ─── Avatar endpoints (authenticated) ─────────────────────────────────────────
+
+const MAX_AVATAR_BYTES = 2 * 1024 * 1024; // 2 MB
+
+// PUT /auth/avatar — upload the user's JPEG avatar
+app.put('/auth/avatar', { preHandler: authHook, bodyLimit: MAX_AVATAR_BYTES }, async (req, reply) => {
+  const ct = req.headers['content-type'];
+  if (!ct?.startsWith('image/jpeg')) return reply.status(415).send({ error: 'Content-Type must be image/jpeg' });
+  const body = req.body as Buffer;
+  if (body.length > MAX_AVATAR_BYTES) return reply.status(413).send({ error: 'Image too large (max 2 MB)' });
+  const filePath = path.join(config.avatarsDir, `user-${req.user.id}.jpg`);
+  await fs.promises.writeFile(filePath, body);
+  reply.status(204).send();
+});
+
+// GET /auth/avatar — serve the user's JPEG avatar
+app.get('/auth/avatar', { preHandler: authHook }, async (req, reply) => {
+  const filePath = path.join(config.avatarsDir, `user-${req.user.id}.jpg`);
+  try {
+    const stat = await fs.promises.stat(filePath);
+    reply.header('Content-Type', 'image/jpeg');
+    reply.header('Content-Length', String(stat.size));
+    reply.header('Cache-Control', 'max-age=86400');
+    return reply.send(fs.createReadStream(filePath));
+  } catch {
+    return reply.status(404).send();
+  }
+});
+
+// PUT /conversations/:id/avatar — upload the assistant's JPEG avatar for a conversation
+app.put<{ Params: { id: string } }>(
+  '/conversations/:id/avatar',
+  { preHandler: authHook, bodyLimit: MAX_AVATAR_BYTES },
+  async (req, reply) => {
+    const conv = db
+      .prepare('SELECT id FROM conversations WHERE id = ? AND user_id = ?')
+      .get(req.params.id, req.user.id) as { id: string } | undefined;
+    if (!conv) return reply.notFound();
+
+    const ct = req.headers['content-type'];
+    if (!ct?.startsWith('image/jpeg')) return reply.status(415).send({ error: 'Content-Type must be image/jpeg' });
+    const body = req.body as Buffer;
+    if (body.length > MAX_AVATAR_BYTES) return reply.status(413).send({ error: 'Image too large (max 2 MB)' });
+    const filePath = path.join(config.avatarsDir, `conv-${conv.id}.jpg`);
+    await fs.promises.writeFile(filePath, body);
+    reply.status(204).send();
+  },
+);
+
+// GET /conversations/:id/avatar — serve the assistant's JPEG avatar for a conversation
+app.get<{ Params: { id: string } }>(
+  '/conversations/:id/avatar',
+  { preHandler: authHook },
+  async (req, reply) => {
+    const conv = db
+      .prepare('SELECT id FROM conversations WHERE id = ? AND user_id = ?')
+      .get(req.params.id, req.user.id) as { id: string } | undefined;
+    if (!conv) return reply.notFound();
+
+    const filePath = path.join(config.avatarsDir, `conv-${conv.id}.jpg`);
+    try {
+      const stat = await fs.promises.stat(filePath);
+      reply.header('Content-Type', 'image/jpeg');
+      reply.header('Content-Length', String(stat.size));
+      reply.header('Cache-Control', 'max-age=86400');
+      return reply.send(fs.createReadStream(filePath));
+    } catch {
+      return reply.status(404).send();
+    }
   },
 );
 

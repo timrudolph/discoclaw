@@ -55,6 +55,8 @@ export type ConversationRow = {
   soul: string | null;              // Per-conversation SOUL.md — who the assistant is
   identity: string | null;          // Per-conversation IDENTITY.md — name and vibe
   user_bio: string | null;          // Per-conversation USER.md — who is being helped
+  assistant_name: string | null;    // Display name for the assistant in this conversation
+  accent_color: string | null;      // Hex accent color, e.g. "#A08060"
 };
 
 export type MessageRow = {
@@ -123,6 +125,7 @@ function migrate(db: Db): void {
     [1, () => v1(db)],
     [2, () => v2(db)],
     [3, () => v3(db)],
+    [4, () => v4(db)],
   ];
 
   for (const [version, run] of migrations) {
@@ -241,5 +244,12 @@ function v3(db: Db): void {
     ALTER TABLE conversations ADD COLUMN soul     TEXT;
     ALTER TABLE conversations ADD COLUMN identity TEXT;
     ALTER TABLE conversations ADD COLUMN user_bio TEXT;
+  `);
+}
+
+function v4(db: Db): void {
+  db.exec(`
+    ALTER TABLE conversations ADD COLUMN assistant_name TEXT;
+    ALTER TABLE conversations ADD COLUMN accent_color   TEXT;
   `);
 }

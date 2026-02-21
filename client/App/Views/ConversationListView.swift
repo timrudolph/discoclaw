@@ -1,4 +1,5 @@
 import SwiftUI
+import PhotosUI
 import ClawClient
 
 struct ConversationListView: View {
@@ -20,6 +21,7 @@ struct ConversationListView: View {
     @State private var showingMemory = false
     @State private var showingWorkspace = false
     @State private var showingCrons = false
+    @State private var showingProfile = false
 
     @AppStorage("appearance") private var appearance = "auto"
 
@@ -171,6 +173,9 @@ struct ConversationListView: View {
                     }
             }
         }
+        .sheet(isPresented: $showingProfile) {
+            ProfileView(api: api)
+        }
         .alert("Rename Conversation", isPresented: Binding(
             get: { renamingConversation != nil },
             set: { if !$0 { renamingConversation = nil } }
@@ -307,6 +312,9 @@ struct ConversationListView: View {
                     Button { showingDevices = true } label: {
                         Label("Manage Devices", systemImage: "laptopcomputer.and.iphone")
                     }
+                    Button { showingProfile = true } label: {
+                        Label("My Profile", systemImage: "person.crop.circle")
+                    }
                     Divider()
                     Button(role: .destructive, action: onSignOut) {
                         Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
@@ -415,6 +423,10 @@ private struct ConversationRow: View {
                     Image(systemName: "archivebox")
                         .font(.caption)
                         .foregroundStyle(.tertiary)
+                } else if let accent = conversation.accentSwiftUIColor {
+                    Circle()
+                        .fill(accent)
+                        .frame(width: 7, height: 7)
                 } else if let icon = conversation.kindIcon {
                     Image(systemName: icon)
                         .font(.caption)
@@ -443,8 +455,192 @@ private struct ConversationRow: View {
                         .padding(.vertical, 1)
                         .background(.secondary.opacity(0.15), in: Capsule())
                 }
+                if let name = conversation.assistantName, !name.isEmpty {
+                    Text(name)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                }
             }
         }
         .padding(.vertical, 2)
+    }
+}
+
+// MARK: - Profile View
+
+/// Global user profile editor (name + avatar).
+/// Opened from the settings menu in the conversation list bottom bar.
+private struct ProfileView: View {
+    let api: APIClient
+
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var displayName: String = ""
+    @State private var userImage: Image? = nil
+    @State private var selectedPhotoItem: PhotosPickerItem?
+    @State private var isUploadingPhoto = false
+    @State private var isSaving = false
+    @State private var savedRecently = false
+    @State private var errorMessage: String?
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    HStack(spacing: 14) {
+                        PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
+                            avatarPreview
+                        }
+                        .buttonStyle(.plain)
+
+                        TextField("Your name", text: $displayName)
+                    }
+                    .padding(.vertical, 4)
+                    if isUploadingPhoto {
+                        HStack(spacing: 8) {
+                            ProgressView().controlSize(.small)
+                            Text("Uploading photo…")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    if let errorMessage {
+                        Text(errorMessage)
+                            .font(.caption).foregroundStyle(.red)
+                    }
+                } header: {
+                    Text("My Profile")
+                } footer: {
+                    Text("Your name and photo appear in your chat messages.")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .formStyle(.grouped)
+            .navigationTitle("My Profile")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    if isSaving {
+                        ProgressView().controlSize(.small)
+                    } else if savedRecently {
+                        Label("Saved", systemImage: "checkmark")
+                            .foregroundStyle(.green).font(.subheadline)
+                    } else {
+                        Button("Save") { Task { await save() } }
+                            .buttonStyle(.borderedProminent)
+                    }
+                }
+            }
+            .onChange(of: selectedPhotoItem) { _, item in
+                Task { await uploadPhoto(item) }
+            }
+            .task { await loadProfile() }
+        }
+        .presentationDetents([.medium])
+    }
+
+    @ViewBuilder
+    private var avatarPreview: some View {
+        ZStack {
+            Circle()
+                .fill(Color.accentColor.opacity(0.25))
+                .frame(width: 56, height: 56)
+            if let userImage {
+                userImage
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 56, height: 56)
+                    .clipShape(Circle())
+            } else {
+                Image(systemName: "person.fill")
+                    .font(.title2)
+                    .foregroundStyle(Color.accentColor)
+            }
+        }
+        .overlay(Circle().strokeBorder(Color.secondary.opacity(0.2), lineWidth: 1))
+    }
+
+    private func loadProfile() async {
+        if let me = try? await api.me() {
+            displayName = me.user.name ?? ""
+        }
+        if let data = try? await api.fetchUserAvatar() {
+            userImage = imageFromData(data)
+        }
+    }
+
+    private func uploadPhoto(_ item: PhotosPickerItem?) async {
+        guard let item else { return }
+        isUploadingPhoto = true
+        errorMessage = nil
+        defer { isUploadingPhoto = false }
+        guard let data = try? await item.loadTransferable(type: Data.self),
+              let jpeg = compressToJPEG(data, maxSize: CGSize(width: 512, height: 512)) else {
+            errorMessage = "Could not process image."
+            return
+        }
+        do {
+            try await api.uploadUserAvatar(jpeg)
+            userImage = imageFromData(jpeg)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func save() async {
+        isSaving = true
+        errorMessage = nil
+        do {
+            try await api.updateUserProfile(name: displayName.isEmpty ? nil : displayName)
+            savedRecently = true
+            try? await Task.sleep(for: .seconds(1.5))
+            savedRecently = false
+            dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+        isSaving = false
+    }
+
+    private func imageFromData(_ data: Data) -> Image? {
+        #if os(iOS)
+        guard let ui = UIImage(data: data) else { return nil }
+        return Image(uiImage: ui)
+        #else
+        guard let ns = NSImage(data: data) else { return nil }
+        return Image(nsImage: ns)
+        #endif
+    }
+
+    private func compressToJPEG(_ data: Data, maxSize: CGSize) -> Data? {
+        #if os(iOS)
+        guard let src = UIImage(data: data) else { return nil }
+        let renderer = UIGraphicsImageRenderer(size: maxSize)
+        let resized = renderer.image { _ in
+            src.draw(in: CGRect(origin: .zero, size: maxSize))
+        }
+        return resized.jpegData(compressionQuality: 0.82)
+        #else
+        guard let src = NSImage(data: data) else { return nil }
+        let resized = NSImage(size: maxSize)
+        resized.lockFocus()
+        src.draw(
+            in: NSRect(origin: .zero, size: maxSize),
+            from: NSRect(origin: .zero, size: src.size),
+            operation: .copy,
+            fraction: 1.0
+        )
+        resized.unlockFocus()
+        guard let tiff = resized.tiffRepresentation,
+              let rep = NSBitmapImageRep(data: tiff),
+              let jpeg = rep.representation(using: .jpeg, properties: [.compressionFactor: 0.82])
+        else { return nil }
+        return jpeg
+        #endif
     }
 }
