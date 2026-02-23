@@ -60,10 +60,14 @@ struct ChatView: View {
         .navigationTitle(conversationTitle)
         #endif
         .toolbar {
-            // Custom principal (center) title: assistant avatar + name.
-            // On macOS we measure the text with AppKit and set an explicit frame
-            // width — the only approach that reliably tells the toolbar item how
-            // wide to be, bypassing NSHostingView intrinsicContentSize issues.
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    showingChatMemory = true
+                } label: {
+                    Label("Chat Memory", systemImage: "brain")
+                }
+                .help("Chat Memory")
+            }
             ToolbarItem(placement: .primaryAction) {
                 Menu {
                     ShareLink(item: exportText, subject: Text(conversation?.title ?? "Chat")) {
@@ -71,11 +75,6 @@ struct ChatView: View {
                     }
                     .disabled(viewModel.messages.isEmpty)
                     Divider()
-                    Button {
-                        showingChatMemory = true
-                    } label: {
-                        Label("Chat Memory", systemImage: "brain")
-                    }
                     Button {
                         showingContextModules = true
                     } label: {

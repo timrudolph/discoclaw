@@ -153,15 +153,6 @@ struct AppRootView: View {
             }
         }
         .environmentObject(container.syncEngine)
-        .toolbar {
-            if sidebarMode == .chats {
-                ToolbarItem(placement: .primaryAction) {
-                    Button { showingNewConversation = true } label: {
-                        Label("New Chat", systemImage: "square.and.pencil")
-                    }
-                }
-            }
-        }
         .sheet(isPresented: $showingNewConversation) {
             NewConversationView(
                 api: container.api,

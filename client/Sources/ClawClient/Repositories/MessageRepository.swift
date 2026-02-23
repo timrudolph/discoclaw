@@ -205,7 +205,7 @@ public final class MessageRepository {
                 return Dictionary(messages.map { ($0.conversationId, $0) },
                                   uniquingKeysWith: { first, _ in first })
             }
-            .publisher(in: db.writer, scheduling: .immediate)
+            .publisher(in: db.writer, scheduling: .async(onQueue: .main))
             .catch { _ in Just([:]) }
             .eraseToAnyPublisher()
     }
@@ -220,7 +220,7 @@ public final class MessageRepository {
                     .order(Message.Columns.seq.asc)
                     .fetchAll(db)
             }
-            .publisher(in: db.writer, scheduling: .immediate)
+            .publisher(in: db.writer, scheduling: .async(onQueue: .main))
             .eraseToAnyPublisher()
     }
 }

@@ -15,6 +15,7 @@ struct ConversationListView: View {
     @State private var renamingConversation: Conversation?
     @State private var renameTitle = ""
     @State private var searchText = ""
+    @State private var isSearchExpanded = false
     @State private var messageSearchResults: [MessageSearchResponse.SearchResult] = []
     @State private var isSearchingMessages = false
     @State private var showingDevices = false
@@ -42,30 +43,26 @@ struct ConversationListView: View {
         }
     }
 
+    private var protectedConversations: [Conversation] {
+        filteredConversations.filter { $0.isProtected }
+    }
+
+    private var regularConversations: [Conversation] {
+        filteredConversations.filter { !$0.isProtected }
+    }
+
     var body: some View {
         List(selection: $selectedId) {
-            // Conversation title matches
-            ForEach(filteredConversations) { conversation in
-                if isTabContext {
-                    NavigationLink(value: conversation.id) {
-                        ConversationRow(
-                            conversation: conversation,
-                            lastMessage: viewModel.lastMessages[conversation.id]
-                        )
-                    }
-                    .swipeActions(edge: .trailing, allowsFullSwipe: !conversation.isProtected) {
-                        conversationSwipeActions(for: conversation)
-                    }
-                } else {
-                    ConversationRow(
-                        conversation: conversation,
-                        lastMessage: viewModel.lastMessages[conversation.id]
-                    )
-                    .tag(conversation.id)
-                    .swipeActions(edge: .trailing, allowsFullSwipe: !conversation.isProtected) {
-                        conversationSwipeActions(for: conversation)
-                    }
+            // Protected (built-in) conversations — General, Tasks, Journal, etc.
+            if !protectedConversations.isEmpty {
+                Section {
+                    ForEach(protectedConversations) { conversationRow(for: $0) }
                 }
+            }
+
+            // User-created conversations
+            Section {
+                ForEach(regularConversations) { conversationRow(for: $0) }
             }
 
             // Message content matches — shown when search is active
@@ -109,16 +106,58 @@ struct ConversationListView: View {
             Task { await performMessageSearch(query: query) }
         }
         .listStyle(.sidebar)
-        .searchable(text: $searchText, prompt: "Search")
+        .if(isTabContext) { $0.searchable(text: $searchText, prompt: "Search") }
         .navigationTitle("Chats")
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    onNewChat()
-                } label: {
-                    Label("New Chat", systemImage: "square.and.pencil")
+        .safeAreaInset(edge: .top) {
+            if !isTabContext {
+                VStack(spacing: 0) {
+                    HStack(spacing: 8) {
+                        Picker("", selection: $sidebarMode) {
+                            Text("Chats").tag(SidebarMode.chats)
+                            Text("Beads").tag(SidebarMode.beads)
+                        }
+                        .pickerStyle(.segmented)
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                isSearchExpanded.toggle()
+                                if !isSearchExpanded { searchText = "" }
+                            }
+                        } label: {
+                            Image(systemName: "magnifyingglass")
+                                .font(.body)
+                                .foregroundStyle(isSearchExpanded ? .primary : .secondary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.top, 8)
+                    .padding(.bottom, 4)
+                    if isSearchExpanded {
+                        HStack(spacing: 6) {
+                            Image(systemName: "magnifyingglass")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                            TextField("Search", text: $searchText)
+                                .textFieldStyle(.plain)
+                            if !searchText.isEmpty {
+                                Button { searchText = "" } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundStyle(.secondary)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(.quaternary, in: RoundedRectangle(cornerRadius: 7))
+                        .padding(.horizontal, 14)
+                        .padding(.bottom, 6)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                    }
+                    Divider()
                 }
-                .keyboardShortcut("n", modifiers: .command)
+                .background(.bar)
+                .animation(.easeInOut(duration: 0.2), value: isSearchExpanded)
             }
         }
         .overlay {
@@ -144,34 +183,13 @@ struct ConversationListView: View {
             }
         }
         .sheet(isPresented: $showingWorkspace) {
-            NavigationStack {
-                WorkspaceFilesView(api: api)
-                    .toolbar {
-                        ToolbarItem(placement: .cancellationAction) {
-                            Button("Done") { showingWorkspace = false }
-                        }
-                    }
-            }
+            WorkspaceFilesView(api: api)
         }
         .sheet(isPresented: $showingMemory) {
-            NavigationStack {
-                MemoryView(api: api)
-                    .toolbar {
-                        ToolbarItem(placement: .cancellationAction) {
-                            Button("Done") { showingMemory = false }
-                        }
-                    }
-            }
+            MemoryView(api: api)
         }
         .sheet(isPresented: $showingDevices) {
-            NavigationStack {
-                DeviceManagementView(api: api)
-                    .toolbar {
-                        ToolbarItem(placement: .cancellationAction) {
-                            Button("Done") { showingDevices = false }
-                        }
-                    }
-            }
+            DeviceManagementView(api: api)
         }
         .sheet(isPresented: $showingProfile) {
             ProfileView(api: api)
@@ -189,6 +207,32 @@ struct ConversationListView: View {
             }
             Button("Cancel", role: .cancel) {
                 renamingConversation = nil
+            }
+        }
+    }
+
+    // MARK: - Row builder
+
+    @ViewBuilder
+    private func conversationRow(for conversation: Conversation) -> some View {
+        if isTabContext {
+            NavigationLink(value: conversation.id) {
+                ConversationRow(
+                    conversation: conversation,
+                    lastMessage: viewModel.lastMessages[conversation.id]
+                )
+            }
+            .swipeActions(edge: .trailing, allowsFullSwipe: !conversation.isProtected) {
+                conversationSwipeActions(for: conversation)
+            }
+        } else {
+            ConversationRow(
+                conversation: conversation,
+                lastMessage: viewModel.lastMessages[conversation.id]
+            )
+            .tag(conversation.id)
+            .swipeActions(edge: .trailing, allowsFullSwipe: !conversation.isProtected) {
+                conversationSwipeActions(for: conversation)
             }
         }
     }
@@ -264,30 +308,27 @@ struct ConversationListView: View {
             }
             Divider()
             HStack(spacing: 4) {
-                if !isTabContext {
-                    // Chats tab — active
-                    Button {} label: {
-                        Label("Chats", systemImage: "bubble.left.and.bubble.right.fill")
-                            .font(.caption.weight(.semibold))
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(.tint.opacity(0.12), in: Capsule())
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.tint)
-
-                    // Beads tab — inactive
-                    Button { sidebarMode = .beads } label: {
-                        Label("Beads", systemImage: "checkmark.circle")
-                            .font(.caption.weight(.semibold))
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.secondary)
+                Button {
+                    onNewChat()
+                } label: {
+                    Image(systemName: "square.and.pencil")
+                        .font(.body)
+                        .foregroundStyle(.secondary)
                 }
+                .buttonStyle(.plain)
+                .keyboardShortcut("n", modifiers: .command)
 
                 Spacer()
+
+                Button {
+                    showingMemory = true
+                } label: {
+                    Image(systemName: "brain")
+                        .font(.body)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Global Memory")
 
                 Menu {
                     Toggle(isOn: $viewModel.showArchived) {
@@ -300,9 +341,6 @@ struct ConversationListView: View {
                         Text("Dark").tag("dark")
                     }
                     Divider()
-                    Button { showingMemory = true } label: {
-                        Label("Memory", systemImage: "brain")
-                    }
                     Button { showingWorkspace = true } label: {
                         Label("Workspace Files", systemImage: "doc.badge.gearshape")
                     }
@@ -430,7 +468,7 @@ private struct ConversationRow: View {
                 } else if let icon = conversation.kindIcon {
                     Image(systemName: icon)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(conversation.isProtected ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
                 }
                 Text(conversation.title ?? "New Conversation")
                     .font(.headline)
@@ -443,23 +481,25 @@ private struct ConversationRow: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
             }
-            HStack(spacing: 4) {
-                Text(conversation.updatedAt, style: .relative)
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                if let model = conversation.modelOverride {
-                    Text(model)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1)
-                        .background(.secondary.opacity(0.15), in: Capsule())
-                }
-                if let name = conversation.assistantName, !name.isEmpty {
-                    Text(name)
-                        .font(.caption2)
+            if lastMessage != nil {
+                HStack(spacing: 4) {
+                    Text(conversation.updatedAt, style: .relative)
+                        .font(.caption)
                         .foregroundStyle(.tertiary)
-                        .lineLimit(1)
+                    if let model = conversation.modelOverride {
+                        Text(model)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(.secondary.opacity(0.15), in: Capsule())
+                    }
+                    if let name = conversation.assistantName, !name.isEmpty {
+                        Text(name)
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                    }
                 }
             }
         }
@@ -642,5 +682,14 @@ private struct ProfileView: View {
         else { return nil }
         return jpeg
         #endif
+    }
+}
+
+// MARK: - Conditional modifier helper
+
+private extension View {
+    @ViewBuilder
+    func `if`<T: View>(_ condition: Bool, transform: (Self) -> T) -> some View {
+        if condition { transform(self) } else { self }
     }
 }

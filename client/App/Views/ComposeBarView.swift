@@ -1,6 +1,97 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
+// MARK: - Auto-expanding editor
+
+/// Preference key used by the hidden sizer Text to report its height.
+private struct ComposeMeasuredHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+
+/// A TextEditor that expands to fit its content without the lag that
+/// TextField(axis: .vertical) has on macOS for soft-wrapped lines.
+///
+/// How it works: a hidden Text view (which measures wrap height correctly and
+/// immediately) sits in the background and reports its height via a
+/// PreferenceKey. The TextEditor is then sized to match.
+private struct GrowingTextEditor: View {
+    @Binding var text: String
+    var placeholder: String = "Message"
+    var maxLines: Int = 8
+    /// Called when Return is pressed without Shift (macOS only). Always
+    /// prevents the newline from being inserted; caller decides whether to send.
+    var onReturnKey: (() -> Void)? = nil
+
+    @State private var editorHeight: CGFloat = 28
+
+    // macOS body font line height ~18pt; TextEditor internal inset ~4pt top+bottom → 26pt.
+    // iOS body font line height ~22pt; TextEditor internal inset ~8pt top+bottom → 38pt.
+    #if os(macOS)
+    private let minHeight: CGFloat = 26
+    private let vPadding: CGFloat = 4
+    private let lineHeight: CGFloat = 20
+    #else
+    private let minHeight: CGFloat = 38
+    private let vPadding: CGFloat = 8
+    private let lineHeight: CGFloat = 22
+    #endif
+    private var maxHeight: CGFloat { CGFloat(maxLines) * lineHeight + vPadding * 2 }
+
+    var body: some View {
+        TextEditor(text: $text)
+            .font(.body)
+            .scrollContentBackground(.hidden)
+            #if os(macOS)
+            .padding(.vertical, vPadding)
+            #endif
+            .frame(height: editorHeight)
+            #if os(macOS)
+            .onKeyPress(.return) {
+                if NSApp.currentEvent?.modifierFlags.contains(.shift) == true { return .ignored }
+                onReturnKey?()
+                return .handled
+            }
+            #endif
+            // Hidden Text in the background measures the true wrap height.
+            // fixedSize(vertical: true) lets it grow beyond the background's bounds
+            // so GeometryReader captures the actual required height.
+            .background(alignment: .topLeading) {
+                Text(text.isEmpty ? " " : text)
+                    .font(.body)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, vPadding)
+                    .background(
+                        GeometryReader { geo in
+                            Color.clear.preference(
+                                key: ComposeMeasuredHeightKey.self,
+                                value: geo.size.height
+                            )
+                        }
+                    )
+                    .hidden()
+            }
+            .overlay(alignment: .topLeading) {
+                if text.isEmpty {
+                    Text(placeholder)
+                        .font(.body)
+                        .foregroundStyle(.tertiary)
+                        .padding(.leading, 5)
+                        .padding(.top, vPadding)
+                        .allowsHitTesting(false)
+                }
+            }
+            .onPreferenceChange(ComposeMeasuredHeightKey.self) { height in
+                let clamped = min(max(height, minHeight), maxHeight)
+                if abs(clamped - editorHeight) > 0.5 {
+                    editorHeight = clamped
+                }
+            }
+    }
+}
+
 struct ComposeBarView: View {
     @Binding var text: String
     let isSending: Bool
@@ -45,22 +136,15 @@ struct ComposeBarView: View {
                 .buttonStyle(.plain)
                 .padding(.bottom, 8)
 
-                TextField("Message", text: $text, axis: .vertical)
-                    .lineLimit(1...8)
-                    .textFieldStyle(.roundedBorder)
-                    #if os(iOS)
-                    .autocorrectionDisabled(false)
-                    #endif
-                    .onSubmit {
-                        #if os(macOS)
-                        // Shift+Return inserts a newline; plain Return sends.
-                        if NSApp.currentEvent?.modifierFlags.contains(.shift) == true {
-                            text += "\n"
-                        } else if canSend {
-                            onSend()
-                        }
-                        #endif
-                    }
+                GrowingTextEditor(
+                    text: $text,
+                    onReturnKey: { if canSend { onSend() } }
+                )
+                .background(.background, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .strokeBorder(Color.secondary.opacity(0.25), lineWidth: 0.5)
+                }
 
                 if isStreaming {
                     Button(action: onStop) {

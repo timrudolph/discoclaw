@@ -139,6 +139,8 @@ export class LongRunningProcess {
           NO_COLOR: process.env.NO_COLOR ?? '1',
           FORCE_COLOR: process.env.FORCE_COLOR ?? '0',
           TERM: process.env.TERM ?? 'dumb',
+          // Unset so the child claude process doesn't think it's nested inside another session.
+          CLAUDECODE: undefined,
         },
       });
     } catch (err) {

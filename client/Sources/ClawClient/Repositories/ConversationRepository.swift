@@ -85,14 +85,12 @@ public final class ConversationRepository {
     public func observe(id: String) -> AnyPublisher<Conversation?, Never> {
         ValueObservation
             .tracking { db in try Conversation.fetchOne(db, key: id) }
-            .publisher(in: db.writer, scheduling: .immediate)
+            .publisher(in: db.writer, scheduling: .async(onQueue: .main))
             .catch { _ in Just(nil) }
             .eraseToAnyPublisher()
     }
 
     /// Emits the full sorted list whenever any conversation changes.
-    /// Schedule on `.immediate` so the first value arrives synchronously
-    /// (no blank state flash in SwiftUI).
     public func observeAll(includeArchived: Bool = false) -> AnyPublisher<[Conversation], Error> {
         ValueObservation
             .tracking { db -> [Conversation] in
@@ -102,7 +100,7 @@ public final class ConversationRepository {
                 }
                 return try request.fetchAll(db)
             }
-            .publisher(in: db.writer, scheduling: .immediate)
+            .publisher(in: db.writer, scheduling: .async(onQueue: .main))
             .eraseToAnyPublisher()
     }
 }

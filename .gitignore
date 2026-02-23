@@ -27,3 +27,5 @@ plans/*.md
 !plans/README.md
 plans/community/*
 !plans/community/.gitkeep
+/.client-build
+/client/.build

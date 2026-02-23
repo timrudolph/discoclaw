@@ -4,13 +4,16 @@
 
 # DiscoClaw
 
-A Discord-native AI workspace built on three pillars: **Memory**, **Beads**, and **Crons**.
+A personal AI workspace built on three pillars: **Memory**, **Beads**, and **Crons**.
 
-DiscoClaw turns a private Discord server into a persistent AI workspace. Your assistant remembers you across sessions, tracks work in forum threads, and runs scheduled tasks autonomously — all through natural conversation.
+DiscoClaw turns Discord (and optionally a native iOS/macOS app) into a persistent AI workspace. Your assistant remembers you across sessions, tracks work in forum threads, and runs scheduled tasks autonomously — all through natural conversation.
 
 It's designed for a single user on a fresh, private server — your own sandbox. Not a shared bot, not a multi-user platform. Just you and your assistant in a space you control.
 
-No gateways, no proxies, no web UI to deploy — Discord *is* the interface. Run the DiscoClaw service on a Linux or macOS machine (see [Platform support](#platform-support)) and talk to your assistant from anywhere Discord works: desktop, mobile, browser.
+Two interface options — run either, or both together:
+
+- **Discord bot** — no deployment beyond the service itself; Discord is the interface
+- **Native iOS/macOS app** — ClawApp, a native SwiftUI client that connects to the DiscoClaw server component over HTTP/WebSocket
 
 The codebase is intentionally small — small enough to read, audit, and modify directly. Customization means changing the code, not configuring a plugin system.
 
@@ -52,15 +55,48 @@ Recurring tasks defined as forum threads in plain language — no crontab, no se
 
 **Why Discord fits:** forum threads = job definitions, archive/unarchive = pause/resume, no separate scheduler UI needed.
 
+## Native iOS/macOS app (ClawApp)
+
+ClawApp is a native SwiftUI app (iPhone, iPad, and Mac) that connects directly to the DiscoClaw server component. It's an optional alternative to Discord — useful when you want a purpose-built interface instead of (or alongside) the Discord bot.
+
+**Features:**
+- Conversations with per-conversation identity files (`SOUL.md`, `IDENTITY.md`, `USER.md`)
+- Attach context modules (`.context/*.md` files) per conversation
+- Beads task tracking, server-side cron jobs, and workspace file editing
+- Memory items, full-text search across message history
+- Adaptive navigation — tab bar on iPhone, split view on iPad and Mac
+
+**To build and run ClawApp**, you need Xcode 16+. The Xcode project is generated with [XcodeGen](https://github.com/yonaskolb/XcodeGen):
+
+```bash
+cd client
+xcodegen generate
+open ClawApp.xcodeproj
+```
+
+The server component must be running for the app to connect (see [Component selection](#component-selection) below).
+
 ## How it works
 
-DiscoClaw is a bridge between Discord and an AI runtime (Claude Code by default). When you send a message, it:
+DiscoClaw is a bridge between your interfaces (Discord and/or the native app) and an AI runtime (Claude Code by default). When you send a message, it:
 
-1. Checks the user allowlist (fail-closed — empty list means respond to nobody)
-2. Loads per-channel context, conversation history, rolling summary, and durable memory
+1. Checks authorization (Discord allowlist or registered device token)
+2. Loads per-conversation context, conversation history, rolling summary, and durable memory
 3. Passes everything to the runtime (Claude CLI) running in your workspace directory
-4. Streams the response back, chunked to fit Discord's message limits
-5. Parses and executes any Discord actions the assistant emitted
+4. Streams the response back in real time
+5. Parses and executes any Discord actions the assistant emitted (Discord bot only)
+
+## Component selection
+
+DiscoClaw starts the Discord bot by default. Set env vars to choose what runs:
+
+| Config | Discord bot | Native app server |
+|--------|-------------|-------------------|
+| (default) | ✓ | — |
+| `DISCOCLAW_SERVER_ENABLED=1` | ✓ | ✓ |
+| `DISCOCLAW_DISCORD_ENABLED=0` `DISCOCLAW_SERVER_ENABLED=1` | — | ✓ |
+
+Both components share the same `WORKSPACE_CWD`, `CLAUDE_BIN`, and runtime settings.
 
 ## Customization
 
@@ -85,8 +121,11 @@ Author one plan file for an integration, share it, then let another user's Disco
 - **pnpm** — enable via Corepack (`corepack enable`) or install separately
 - **Claude CLI** on your `PATH` — check with `claude --version` (see [Claude CLI docs](https://docs.anthropic.com/en/docs/claude-code) to install)
 - An **Anthropic account** with an active Claude plan or API credits (the CLI needs this to run)
+- **Xcode 16+** and **XcodeGen** — only needed to build ClawApp
 
 ## Quick start
+
+### Discord bot (default)
 
 1. **Create a Discord bot** and invite it to a private server (see the [bot setup guide](docs/discord-bot-setup.md))
 
@@ -95,13 +134,32 @@ Author one plan file for an integration, share it, then let another user's Disco
    pnpm install
    pnpm setup            # guided interactive setup
    # Or manually: cp .env.example .env and fill in DISCORD_TOKEN + DISCORD_ALLOW_USER_IDS
-   # For all ~90 options: cp .env.example.full .env
+   # For all ~100 options: cp .env.example.full .env
    ```
 
 3. **Run:**
    ```bash
    pnpm dev
    ```
+
+### Native app server
+
+1. **Configure the server** in `.env`:
+   ```bash
+   DISCOCLAW_SERVER_ENABLED=1
+   SETUP_TOKEN=$(openssl rand -hex 32)   # clients present this to pair
+   SERVER_HOST=0.0.0.0                   # expose on LAN for devices
+   # TLS_CERT=/path/to/cert.pem          # strongly recommended on LAN
+   # TLS_KEY=/path/to/key.pem
+   ```
+
+2. **Run:**
+   ```bash
+   pnpm dev                   # both Discord bot + server
+   pnpm dev:server            # server only (no Discord)
+   ```
+
+3. **Build and open ClawApp** in Xcode, then enter your server URL and setup token to pair.
 
 ## Updating
 
@@ -126,18 +184,21 @@ systemctl --user restart discoclaw.service
 - **All platforms** — `pnpm dev` works everywhere Node.js runs (Linux, macOS, Windows)
 - **Linux** — systemd service file provided for production deployment (see `.context/ops.md`)
 - **macOS / Windows** — use pm2, screen, or another process manager for long-running deployment; or just `pnpm dev` in a terminal
+- **iOS / macOS (ClawApp)** — requires Xcode 16+; targets iOS 17+ and macOS 14+
 
 > Windows is not tested for production use in v0.x. The session scanner has known path-handling issues on Windows, and the Claude CLI primarily targets Linux and macOS.
 
 ## Safety
 
-DiscoClaw can execute powerful local tooling via an agent runtime, often with elevated permissions. Treat it like a local automation system connected to Discord.
+DiscoClaw can execute powerful local tooling via an agent runtime, often with elevated permissions. Treat it like a local automation system.
 
 - Use a **private Discord server** — don't start in a shared or public server
 - Use **least-privilege** Discord permissions
-- Keep `DISCORD_ALLOW_USER_IDS` tight — this is the primary security boundary
+- Keep `DISCORD_ALLOW_USER_IDS` tight — this is the primary security boundary for the Discord bot
 - Empty allowlist = respond to nobody (fail-closed)
 - Optionally restrict channels with `DISCORD_CHANNEL_IDS`
+- Set a strong `SETUP_TOKEN` — this is the security boundary for the native app server
+- Use TLS (`TLS_CERT` / `TLS_KEY`) when the server is exposed on a LAN or the internet
 - External content (Discord messages, web pages, files) is **data**, not instructions
 
 ## Workspace layout
@@ -151,15 +212,17 @@ DiscoClaw runs the AI runtime in a separate working directory (`WORKSPACE_CWD`),
 ## Development
 
 ```bash
-pnpm doctor     # preflight check (Node, pnpm, Claude CLI, .env)
-pnpm dev        # start dev mode
-pnpm build      # compile TypeScript
-pnpm test       # run tests
+pnpm doctor          # preflight check (Node, pnpm, Claude CLI, .env)
+pnpm dev             # start all enabled components (from DISCOCLAW_*_ENABLED flags)
+pnpm dev:discord     # Discord bot only
+pnpm dev:server      # native client server only
+pnpm build           # compile TypeScript
+pnpm test            # run tests
 ```
 
 ## Built with
 
-[Claude Code](https://claude.ai/claude-code), [OpenAI Codex](https://openai.com/index/openai-codex/), [discord.js](https://discord.js.org), [Croner](https://github.com/hexagon/croner), and [Beads](https://github.com/qwibitai/beads).
+[Claude Code](https://claude.ai/claude-code), [OpenAI Codex](https://openai.com/index/openai-codex/), [discord.js](https://discord.js.org), [Croner](https://github.com/hexagon/croner), [Fastify](https://fastify.dev), and [Beads](https://github.com/qwibitai/beads).
 
 ## License
 
