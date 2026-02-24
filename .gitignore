@@ -29,4 +29,5 @@ plans/community/*
 !plans/community/.gitkeep
 /.client-build
 /client/.build
-data/server.db-wal
+data/*
+

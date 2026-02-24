@@ -37,6 +37,9 @@ export type ServerConfig = {
   appfiguresClientKey: string | null;
   appfiguresContextPath: string;
 
+  // Feature flags
+  beadsEnabled: boolean;
+
   // Avatar storage directory
   avatarsDir: string;
 };
@@ -107,6 +110,7 @@ export function parseServerConfig(env: NodeJS.ProcessEnv): ServerConfig {
     appfiguresToken: env.APPFIGURES_TOKEN?.trim() || null,
     appfiguresClientKey: env.APPFIGURES_CLIENT_KEY?.trim() || null,
     appfiguresContextPath: str(env, 'SERVER_APPFIGURES_CONTEXT', defaultAppfiguresContextPath),
+    beadsEnabled: bool(env, 'SERVER_BEADS_ENABLED', true),
     avatarsDir: str(env, 'SERVER_AVATARS_DIR', defaultAvatarsDir),
   };
 }

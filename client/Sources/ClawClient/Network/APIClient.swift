@@ -25,6 +25,16 @@ public final class APIClient: Sendable {
         self.session = session
     }
 
+    // MARK: - Health / Features
+
+    /// Fetches server feature flags from /health (unauthenticated).
+    public func health() async throws -> HealthResponse {
+        let url = URL(string: "/health", relativeTo: baseURL)!.absoluteURL
+        let (data, response) = try await session.data(from: url)
+        try checkStatus(response, data: data)
+        return try decode(HealthResponse.self, from: data)
+    }
+
     // MARK: - Auth
 
     public func me() async throws -> MeResponse {

@@ -4,7 +4,7 @@ import ClawClient
 struct NewConversationView: View {
     let api: APIClient
     let onCreate: (String) -> Void
-    let create: (_ title: String?, _ modules: [String], _ memory: String?) async -> String?
+    let create: (_ title: String?, _ modules: [String], _ memory: String?, _ soul: String?, _ identity: String?, _ userBio: String?) async -> String?
 
     // ── Name ──────────────────────────────────────────────────────────────────
     @State private var title = ""
@@ -127,7 +127,7 @@ struct NewConversationView: View {
 
                     // Memory
                     DisclosureSection(icon: "brain", title: "Initial Memory",
-                                      subtitle: "Saved globally across all conversations.") {
+                                      subtitle: "Saved to this conversation's memory.") {
                         ZStack(alignment: .topLeading) {
                             if memoryNote.isEmpty {
                                 Text("e.g. \"This project uses TypeScript and pnpm.\"")
@@ -261,13 +261,19 @@ struct NewConversationView: View {
     private func submit() async {
         isCreating = true
         error = nil
-        let trimmedTitle  = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedMemory = memoryNote.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedTitle    = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedMemory   = memoryNote.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedSoul     = soul.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedIdentity = identity.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedUserBio  = userBio.trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard let id = await create(
-            trimmedTitle.isEmpty ? nil : trimmedTitle,
+            trimmedTitle.isEmpty    ? nil : trimmedTitle,
             Array(selectedModules),
-            trimmedMemory.isEmpty ? nil : trimmedMemory
+            trimmedMemory.isEmpty   ? nil : trimmedMemory,
+            trimmedSoul.isEmpty     ? nil : trimmedSoul,
+            trimmedIdentity.isEmpty ? nil : trimmedIdentity,
+            trimmedUserBio.isEmpty  ? nil : trimmedUserBio
         ) else {
             error = "Failed to create conversation."
             isCreating = false
@@ -277,19 +283,6 @@ struct NewConversationView: View {
         // Apply model override if changed from default
         if let modelId = selectedModelId {
             _ = try? await api.updateConversation(id: id, modelOverride: .some(modelId))
-        }
-
-        // Apply persona if any field is filled
-        let hasSoul     = !soul.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        let hasIdentity = !identity.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        let hasUserBio  = !userBio.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        if hasSoul || hasIdentity || hasUserBio {
-            _ = try? await api.updatePersona(
-                conversationId: id,
-                soul:     hasSoul     ? soul     : nil,
-                identity: hasIdentity ? identity : nil,
-                userBio:  hasUserBio  ? userBio  : nil
-            )
         }
 
         onCreate(id)

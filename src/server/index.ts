@@ -176,6 +176,7 @@ app.get('/health', async () => ({
   ok: true,
   uptime: Math.floor(process.uptime()),
   connections: hub.connectionCount(),
+  beadsEnabled: config.beadsEnabled,
 }));
 
 // ─── Auth routes (no auth hook) ───────────────────────────────────────────────
@@ -597,7 +598,7 @@ await app.register(async (authed) => {
   registerConversationRoutes(authed, db);
   registerMessageRoutes(authed, db, hub, runtime, config);
   registerSyncRoutes(authed, db);
-  registerBeadsRoutes(authed, db, hub);
+  if (config.beadsEnabled) registerBeadsRoutes(authed, db, hub);
   registerCronRoutes(authed, db, cronScheduler);
 
   // GET /search?q=<text>&limit=20 — full-text search across message content

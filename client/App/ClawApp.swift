@@ -62,6 +62,7 @@ struct AppRootView: View {
     @State private var selectedBead: Bead?
 
     @State private var showingNewConversation = false
+    @State private var beadsEnabled = true
 
     @AppStorage("appearance") private var appearance = "auto"
 
@@ -106,6 +107,7 @@ struct AppRootView: View {
                         messageRepo: container.messageRepo,
                         api: container.api,
                         sidebarMode: $sidebarMode,
+                        beadsEnabled: beadsEnabled,
                         onNewChat: { showingNewConversation = true },
                         onSignOut: {
                             container.syncEngine.stop()
@@ -118,11 +120,13 @@ struct AppRootView: View {
                         }
                     )
                 case .beads:
-                    BeadsListView(
-                        selectedId: $selectedBeadId,
-                        api: container.api,
-                        sidebarMode: $sidebarMode
-                    )
+                    if beadsEnabled {
+                        BeadsListView(
+                            selectedId: $selectedBeadId,
+                            api: container.api,
+                            sidebarMode: $sidebarMode
+                        )
+                    }
                 }
             }
         } detail: {
@@ -144,17 +148,19 @@ struct AppRootView: View {
                     )
                 }
             case .beads:
-                if let id = selectedBeadId {
-                    BeadDetailView(beadId: id, api: container.api) { updated in
-                        selectedBead = updated
+                if beadsEnabled {
+                    if let id = selectedBeadId {
+                        BeadDetailView(beadId: id, api: container.api) { updated in
+                            selectedBead = updated
+                        }
+                        .id(id)
+                    } else {
+                        ContentUnavailableView(
+                            "No Bead Selected",
+                            systemImage: "checkmark.circle",
+                            description: Text("Select a bead from the list.")
+                        )
                     }
-                    .id(id)
-                } else {
-                    ContentUnavailableView(
-                        "No Bead Selected",
-                        systemImage: "checkmark.circle",
-                        description: Text("Select a bead from the list.")
-                    )
                 }
             }
         }
@@ -163,13 +169,18 @@ struct AppRootView: View {
             NewConversationView(
                 api: container.api,
                 onCreate: { id in selectedConversationId = id },
-                create: { title, modules, memory in
-                    await makeConversation(container: container, title: title, modules: modules, memory: memory)
+                create: { title, modules, memory, soul, identity, userBio in
+                    await makeConversation(container: container, title: title, modules: modules,
+                                          memory: memory, soul: soul, identity: identity, userBio: userBio)
                 }
             )
         }
         .task {
             await container.syncEngine.start()
+            if let h = try? await container.api.health() {
+                beadsEnabled = h.beadsEnabled ?? true
+                if !beadsEnabled && sidebarMode == .beads { sidebarMode = .chats }
+            }
             #if os(macOS)
             if selectedConversationId == nil {
                 if let general = try? await container.conversationRepo.firstProtected() {
@@ -207,6 +218,7 @@ struct AppRootView: View {
                         messageRepo: container.messageRepo,
                         api: container.api,
                         sidebarMode: $sidebarMode,
+                        beadsEnabled: beadsEnabled,
                         onNewChat: { showingNewConversation = true },
                         onSignOut: {
                             container.syncEngine.stop()
@@ -219,11 +231,13 @@ struct AppRootView: View {
                         }
                     )
                 case .beads:
-                    BeadsListView(
-                        selectedId: $selectedBeadId,
-                        api: container.api,
-                        sidebarMode: $sidebarMode
-                    )
+                    if beadsEnabled {
+                        BeadsListView(
+                            selectedId: $selectedBeadId,
+                            api: container.api,
+                            sidebarMode: $sidebarMode
+                        )
+                    }
                 }
             }
             .navigationDestination(for: PhoneNav.self) { nav in
@@ -236,8 +250,10 @@ struct AppRootView: View {
                         api: container.api
                     )
                 case .bead:
-                    BeadDetailView(beadId: nav.id, api: container.api) { updated in
-                        selectedBead = updated
+                    if beadsEnabled {
+                        BeadDetailView(beadId: nav.id, api: container.api) { updated in
+                            selectedBead = updated
+                        }
                     }
                 }
             }
@@ -246,13 +262,20 @@ struct AppRootView: View {
             NewConversationView(
                 api: container.api,
                 onCreate: { id in selectedConversationId = id },
-                create: { title, modules, memory in
-                    await makeConversation(container: container, title: title, modules: modules, memory: memory)
+                create: { title, modules, memory, soul, identity, userBio in
+                    await makeConversation(container: container, title: title, modules: modules,
+                                          memory: memory, soul: soul, identity: identity, userBio: userBio)
                 }
             )
         }
         .environmentObject(container.syncEngine)
-        .task { await container.syncEngine.start() }
+        .task {
+            await container.syncEngine.start()
+            if let h = try? await container.api.health() {
+                beadsEnabled = h.beadsEnabled ?? true
+                if !beadsEnabled && sidebarMode == .beads { sidebarMode = .chats }
+            }
+        }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
                 Task { await container.syncEngine.reconnectIfNeeded() }
@@ -270,7 +293,15 @@ struct AppRootView: View {
 
     // MARK: - Helpers
 
-    private func makeConversation(container: AppContainer, title: String?, modules: [String], memory: String?) async -> String? {
+    private func makeConversation(
+        container: AppContainer,
+        title: String?,
+        modules: [String],
+        memory: String?,
+        soul: String? = nil,
+        identity: String? = nil,
+        userBio: String? = nil
+    ) async -> String? {
         do {
             let detail = try await container.api.createConversation(title: title)
             let conv = Conversation(
@@ -282,14 +313,26 @@ struct AppRootView: View {
                 archivedAt: nil,
                 isProtected: detail.isProtected ?? false,
                 kind: detail.kind,
-                modelOverride: detail.modelOverride
+                modelOverride: detail.modelOverride,
+                soul: soul,
+                identity: identity,
+                userBio: userBio
             )
             try await container.conversationRepo.save(conv)
             if !modules.isEmpty {
                 try? await container.api.setConversationModules(conversationId: detail.id, modules: modules)
             }
-            if let memory, !memory.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                _ = try? await container.api.addMemory(content: memory.trimmingCharacters(in: .whitespacesAndNewlines))
+            if soul != nil || identity != nil || userBio != nil {
+                _ = try? await container.api.updatePersona(
+                    conversationId: detail.id,
+                    soul: soul, identity: identity, userBio: userBio
+                )
+            }
+            if let memory, !memory.isEmpty {
+                _ = try? await container.api.addConversationMemory(
+                    conversationId: detail.id,
+                    content: memory
+                )
             }
             return detail.id
         } catch {

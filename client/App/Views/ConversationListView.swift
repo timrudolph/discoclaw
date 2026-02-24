@@ -8,6 +8,7 @@ struct ConversationListView: View {
     let onNewChat: () -> Void
     let api: APIClient
     @Binding var sidebarMode: SidebarMode
+    let beadsEnabled: Bool
     @StateObject private var viewModel: ConversationListViewModel
     @EnvironmentObject private var syncEngine: SyncEngine
 
@@ -25,10 +26,11 @@ struct ConversationListView: View {
 
     @AppStorage("appearance") private var appearance = "auto"
 
-    init(selectedId: Binding<String?>, repo: ConversationRepository, messageRepo: MessageRepository, api: APIClient, sidebarMode: Binding<SidebarMode>, onNewChat: @escaping () -> Void, onSignOut: @escaping () -> Void) {
+    init(selectedId: Binding<String?>, repo: ConversationRepository, messageRepo: MessageRepository, api: APIClient, sidebarMode: Binding<SidebarMode>, beadsEnabled: Bool = true, onNewChat: @escaping () -> Void, onSignOut: @escaping () -> Void) {
         _selectedId = selectedId
         self.api = api
         _sidebarMode = sidebarMode
+        self.beadsEnabled = beadsEnabled
         _viewModel = StateObject(wrappedValue: ConversationListViewModel(repo: repo, messageRepo: messageRepo, api: api))
         self.onNewChat = onNewChat
         self.onSignOut = onSignOut
@@ -117,11 +119,13 @@ struct ConversationListView: View {
         .safeAreaInset(edge: .top) {
             VStack(spacing: 0) {
                     HStack(spacing: 8) {
-                        Picker("", selection: $sidebarMode) {
-                            Text("Chats").tag(SidebarMode.chats)
-                            Text("Beads").tag(SidebarMode.beads)
+                        if beadsEnabled {
+                            Picker("", selection: $sidebarMode) {
+                                Text("Chats").tag(SidebarMode.chats)
+                                Text("Beads").tag(SidebarMode.beads)
+                            }
+                            .pickerStyle(.segmented)
                         }
-                        .pickerStyle(.segmented)
                         Button {
                             withAnimation(.easeInOut(duration: 0.2)) {
                                 isSearchExpanded.toggle()

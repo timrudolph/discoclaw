@@ -81,7 +81,8 @@
       "Bash(# Find where system apps are stored in the simulator runtime find /Library/Developer/CoreSimulator/Volumes -name \"\"Settings.app\"\" -maxdepth 8)",
       "Bash(# Find system apps in CoreSimulator runtime volumes ls /Library/Developer/CoreSimulator/Volumes/)",
       "Bash(# Temporarily add UIApplicationSceneManifest_Generation=YES to see what it generates # First check what keys come from the Multiplatform SwiftUI App template cat \"\"/Applications/Xcode.app/Contents/Developer/Library/Xcode/Templates/Project Templates/MultiPlatform/Base/Multiplatform SwiftUI App.xctemplate/TemplateInfo.plist\"\" | plutil -p -)",
-      "Bash(swift:*)"
+      "Bash(swift:*)",
+      "Bash(systemctl:*)"
     ]
   }
 }

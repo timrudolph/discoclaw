@@ -378,6 +378,14 @@ public struct UpdatePersonaRequest: Encodable {
     }
 }
 
+// ─── Health / Features ────────────────────────────────────────────────────────
+
+public struct HealthResponse: Decodable {
+    public let ok: Bool
+    /// nil if the server is older and doesn't include this field (treat as enabled).
+    public let beadsEnabled: Bool?
+}
+
 // ─── Sync ─────────────────────────────────────────────────────────────────────
 
 public struct SyncResponse: Decodable {
