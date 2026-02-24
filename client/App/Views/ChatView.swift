@@ -11,6 +11,7 @@ struct ChatView: View {
 
     @State private var draftText: String
     @State private var atBottom = true
+    @FocusState private var composeFocused: Bool
     @State private var showingContextModules = false
     @State private var showingPersonaEditor = false
     @State private var showingChatMemory = false
@@ -51,7 +52,8 @@ struct ChatView: View {
                 isSending: viewModel.isSending,
                 isStreaming: viewModel.isStreaming,
                 onSend: send,
-                onStop: { Task { await viewModel.cancel() } }
+                onStop: { Task { await viewModel.cancel() } },
+                composeFocus: $composeFocused
             )
         }
         #if os(macOS)
@@ -117,6 +119,8 @@ struct ChatView: View {
         .task(id: conversationId) {
             await loadAvatars()
         }
+        .onAppear { composeFocused = true }
+        .onChange(of: conversationId) { composeFocused = true }
         // Sync title when the conversation record is updated externally
         .onChange(of: conversation?.title) { _, newTitle in
             guard let newTitle, newTitle != conversationTitle else { return }
@@ -247,6 +251,7 @@ struct ChatView: View {
                     }
                     .padding(.vertical, 12)
                 }
+                .onTapGesture { composeFocused = true }
                 .onPreferenceChange(AtBottomKey.self) { isAtBottom in
                     atBottom = isAtBottom
                 }

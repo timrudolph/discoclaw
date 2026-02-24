@@ -13,6 +13,8 @@ private struct GrowingTextEditor: View {
     var maxLines: Int = 8
     /// Called when Return is pressed without Shift (macOS only).
     var onReturnKey: (() -> Void)? = nil
+    /// FocusState binding hoisted from the parent so the caller can drive focus directly.
+    var isFocused: FocusState<Bool>.Binding
 
     @State private var editorHeight: CGFloat = 0
     @State private var containerWidth: CGFloat = 0
@@ -33,6 +35,7 @@ private struct GrowingTextEditor: View {
 
     var body: some View {
         TextEditor(text: $text)
+            .focused(isFocused)
             .font(.body)
             .scrollContentBackground(.hidden)
             #if os(macOS)
@@ -109,6 +112,8 @@ struct ComposeBarView: View {
     let isStreaming: Bool
     let onSend: () -> Void
     let onStop: () -> Void
+    /// FocusState binding from the parent — set to true to focus the text editor.
+    var composeFocus: FocusState<Bool>.Binding
 
     @State private var showFileImporter = false
     @State private var attachError: String?
@@ -149,7 +154,8 @@ struct ComposeBarView: View {
 
                 GrowingTextEditor(
                     text: $text,
-                    onReturnKey: { if canSend { onSend() } }
+                    onReturnKey: { if canSend { onSend() } },
+                    isFocused: composeFocus
                 )
                 .background(.background, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                 .overlay {

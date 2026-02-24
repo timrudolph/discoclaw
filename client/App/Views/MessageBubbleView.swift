@@ -51,7 +51,9 @@ struct MessageBubbleView: View {
                 }
 
                 // Content or streaming placeholder.
-                if !message.content.isEmpty || isError {
+                // Use whitespace-trimmed check so a stream that opens with "\n\n"
+                // stays on the dot indicator until real text arrives.
+                if !message.content.trimmingCharacters(in: .newlines).isEmpty || isError {
                     bubbleContent
                 } else if isStreaming {
                     // Typing indicator while waiting for first delta.
@@ -250,7 +252,15 @@ struct MessageBubbleView: View {
                 Text(message.content)
             }
         } else {
-            Text(message.content)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(String(message.content.drop(while: { $0.isNewline })))
+                if !isUser && isStreaming {
+                    Image(systemName: "ellipsis")
+                        .symbolEffect(.variableColor.iterative.reversing)
+                        .font(.system(size: 32))
+                        .foregroundStyle(.secondary)
+                }
+            }
         }
     }
 
