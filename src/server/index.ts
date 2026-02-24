@@ -119,7 +119,7 @@ try {
   process.exit(1);
 }
 
-const db = openDb(config.dbPath, config.workspacesBaseDir);
+const db = openDb(config.dbPath);
 log.info({ dbPath: config.dbPath }, 'database opened');
 
 // Create avatars and workspaces directories (idempotent)
