@@ -264,8 +264,9 @@ export function createClaudeCliRuntime(opts: ClaudeCliRuntimeOpts): RuntimeAdapt
       args.push('--max-budget-usd', String(opts.maxBudgetUsd));
     }
 
-    if (opts.appendSystemPrompt) {
-      args.push('--append-system-prompt', opts.appendSystemPrompt);
+    const effectiveAppendSystemPrompt = params.appendSystemPrompt ?? opts.appendSystemPrompt;
+    if (effectiveAppendSystemPrompt) {
+      args.push('--append-system-prompt', effectiveAppendSystemPrompt);
     }
 
     if (opts.debugFile && opts.debugFile.trim()) {

@@ -39,6 +39,8 @@ export type RuntimeInvokeParams = {
   addDirs?: string[];
   timeoutMs?: number;
   images?: ImageData[];
+  /** Per-invocation system prompt append; overrides the runtime-level appendSystemPrompt option. */
+  appendSystemPrompt?: string;
 };
 
 export interface RuntimeAdapter {
