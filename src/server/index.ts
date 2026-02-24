@@ -84,8 +84,10 @@ function ensureProtectedConversation(userId: string, kind: string): void {
   const id = crypto.randomUUID();
   const now = Date.now();
 
-  // Create workspace directory and write identity files as actual files
-  const workspacePath = path.join(config.workspacesBaseDir, id);
+  // Create workspace directory and write identity files as actual files.
+  // Protected conversations use their kind as the directory name (e.g. "general", "tasks")
+  // so the path is stable and human-readable.
+  const workspacePath = path.join(config.workspacesBaseDir, kind);
   fs.mkdirSync(workspacePath, { recursive: true });
   if (defaults?.soul)     fs.writeFileSync(path.join(workspacePath, 'SOUL.md'),     defaults.soul,     'utf8');
   if (defaults?.identity) fs.writeFileSync(path.join(workspacePath, 'IDENTITY.md'), defaults.identity, 'utf8');

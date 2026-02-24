@@ -251,9 +251,11 @@ function v1(db: Db): void {
 function v2(db: Db, workspacesBaseDir: string): void {
   db.exec(`ALTER TABLE conversations ADD COLUMN workspace_path TEXT`);
   // For existing conversations: create workspace dirs and write identity files from old DB columns.
-  const rows = db.prepare('SELECT id, soul, identity, user_bio FROM conversations').all();
-  for (const row of rows as Array<{ id: string; soul: string | null; identity: string | null; user_bio: string | null }>) {
-    const workspacePath = path.join(workspacesBaseDir, row.id);
+  const rows = db.prepare('SELECT id, kind, soul, identity, user_bio FROM conversations').all();
+  for (const row of rows as Array<{ id: string; kind: string | null; soul: string | null; identity: string | null; user_bio: string | null }>) {
+    // Protected conversations (kind IS NOT NULL) get stable named dirs; others use their UUID.
+    const dirName = row.kind ?? row.id;
+    const workspacePath = path.join(workspacesBaseDir, dirName);
     fs.mkdirSync(workspacePath, { recursive: true });
     if (row.soul)     fs.writeFileSync(path.join(workspacePath, 'SOUL.md'),     row.soul,     'utf8');
     if (row.identity) fs.writeFileSync(path.join(workspacePath, 'IDENTITY.md'), row.identity, 'utf8');
