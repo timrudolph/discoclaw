@@ -29,6 +29,7 @@ struct PersonaEditorView: View {
     @State private var identity: String = ""
     @State private var userBio: String = ""
 
+    @State private var isLoadingFiles = true
     @State private var isSaving = false
     @State private var savedRecently = false
     @State private var saveError: String?
@@ -93,21 +94,32 @@ struct PersonaEditorView: View {
                 }
 
                 // ─── Persona text sections ────────────────────────────────
-                section(
-                    title: "SOUL.md",
-                    subtitle: "Who the assistant fundamentally is — personality, values, essence.",
-                    text: $soul
-                )
-                section(
-                    title: "IDENTITY.md",
-                    subtitle: "Name, vibe, and style for this chat.",
-                    text: $identity
-                )
-                section(
-                    title: "USER.md",
-                    subtitle: "Context about who you are and what you're working on.",
-                    text: $userBio
-                )
+                if isLoadingFiles {
+                    Section {
+                        HStack {
+                            Spacer()
+                            ProgressView()
+                            Spacer()
+                        }
+                        .padding(.vertical, 20)
+                    }
+                } else {
+                    section(
+                        title: "SOUL.md",
+                        subtitle: "Who the assistant fundamentally is — personality, values, essence.",
+                        text: $soul
+                    )
+                    section(
+                        title: "IDENTITY.md",
+                        subtitle: "Name, vibe, and style for this chat.",
+                        text: $identity
+                    )
+                    section(
+                        title: "USER.md",
+                        subtitle: "Context about who you are and what you're working on.",
+                        text: $userBio
+                    )
+                }
             }
             .formStyle(.grouped)
             .navigationTitle("Chat Identity")
@@ -139,7 +151,7 @@ struct PersonaEditorView: View {
             .onChange(of: selectedPhotoItem) { _, item in
                 Task { await uploadPhoto(item) }
             }
-            .onAppear { loadFromConversation() }
+            .onAppear { Task { await loadFilesFromAPI() } }
         }
     }
 
@@ -187,21 +199,24 @@ struct PersonaEditorView: View {
 
     // MARK: - Helpers
 
-    private func loadFromConversation() {
-        soul                = conversation?.soul     ?? ""
-        identity            = conversation?.identity ?? ""
-        userBio             = conversation?.userBio  ?? ""
+    private func loadFilesFromAPI() async {
+        // Pre-fill visual identity from the conversation model immediately (no wait)
         assistantDisplayName = conversation?.assistantName ?? ""
         if let hexColor = conversation?.accentSwiftUIColor {
             accentColor = hexColor
             hasCustomAccent = true
         }
-        // Load existing avatar
-        Task {
-            if let data = try? await api.fetchAssistantAvatar(conversationId: conversationId) {
-                avatarImage = imageFromData(data)
-            }
-        }
+        // Load identity files and avatar concurrently
+        async let soulFile:     WorkspaceFileResponse? = try? api.getConversationWorkspaceFile(conversationId: conversationId, name: "SOUL.md")
+        async let identityFile: WorkspaceFileResponse? = try? api.getConversationWorkspaceFile(conversationId: conversationId, name: "IDENTITY.md")
+        async let userFile:     WorkspaceFileResponse? = try? api.getConversationWorkspaceFile(conversationId: conversationId, name: "USER.md")
+        async let avatarData:   Data?                  = try? api.fetchAssistantAvatar(conversationId: conversationId)
+        let (s, i, u, a) = await (soulFile, identityFile, userFile, avatarData)
+        soul     = s?.content ?? ""
+        identity = i?.content ?? ""
+        userBio  = u?.content ?? ""
+        if let data = a { avatarImage = imageFromData(data) }
+        isLoadingFiles = false
     }
 
     private func uploadPhoto(_ item: PhotosPickerItem?) async {
@@ -230,13 +245,17 @@ struct PersonaEditorView: View {
         isSaving = true
         saveError = nil
         do {
-            // Save persona text
-            _ = try await api.updatePersona(
-                conversationId: conversationId,
-                soul:     soul.isEmpty     ? nil : soul,
-                identity: identity.isEmpty ? nil : identity,
-                userBio:  userBio.isEmpty  ? nil : userBio
-            )
+            // Save identity files via workspace file API
+            let writes: [(String, String)] = [
+                ("SOUL.md", soul),
+                ("IDENTITY.md", identity),
+                ("USER.md", userBio),
+            ]
+            for (name, content) in writes {
+                try await api.updateConversationWorkspaceFile(
+                    conversationId: conversationId, name: name, content: content
+                )
+            }
             // Save name + accent color
             let nameToSave: String?? = assistantDisplayName.isEmpty ? .some(nil) : .some(assistantDisplayName)
             let colorToSave: String?? = hasCustomAccent ? .some(accentColor.hexString) : .some(nil)

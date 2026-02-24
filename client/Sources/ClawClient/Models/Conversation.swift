@@ -12,12 +12,6 @@ public struct Conversation: Codable, Identifiable, Equatable, Sendable {
     public var isProtected: Bool
     public var kind: String?
     public var modelOverride: String?
-    /// Per-conversation SOUL.md content.
-    public var soul: String?
-    /// Per-conversation IDENTITY.md content.
-    public var identity: String?
-    /// Per-conversation USER.md content.
-    public var userBio: String?
     /// Display name for the assistant in this conversation.
     public var assistantName: String?
     /// Hex accent color for the assistant's bubbles, e.g. "#A08060".
@@ -58,9 +52,6 @@ public struct Conversation: Codable, Identifiable, Equatable, Sendable {
         isProtected: Bool = false,
         kind: String? = nil,
         modelOverride: String? = nil,
-        soul: String? = nil,
-        identity: String? = nil,
-        userBio: String? = nil,
         assistantName: String? = nil,
         accentColor: String? = nil
     ) {
@@ -73,9 +64,6 @@ public struct Conversation: Codable, Identifiable, Equatable, Sendable {
         self.isProtected = isProtected
         self.kind = kind
         self.modelOverride = modelOverride
-        self.soul = soul
-        self.identity = identity
-        self.userBio = userBio
         self.assistantName = assistantName
         self.accentColor = accentColor
     }

@@ -42,6 +42,9 @@ export type ServerConfig = {
 
   // Avatar storage directory
   avatarsDir: string;
+
+  // Per-conversation workspace directories
+  workspacesBaseDir: string;
 };
 
 function str(env: NodeJS.ProcessEnv, key: string, fallback?: string): string {
@@ -73,6 +76,7 @@ export function parseServerConfig(env: NodeJS.ProcessEnv): ServerConfig {
   const defaultContextDir = path.join(__dirname, '..', '..', '.context');
   const defaultAppfiguresContextPath = path.join(defaultContextDir, 'appfigures.md');
   const defaultAvatarsDir = path.join(__dirname, '..', '..', 'data', 'avatars');
+  const defaultWorkspacesBaseDir = path.join(__dirname, '..', '..', 'data', 'workspaces');
   const rawTools = env.RUNTIME_TOOLS?.trim();
   const runtimeTools = rawTools
     ? rawTools.split(/[,\s]+/).map((t) => t.trim()).filter(Boolean)
@@ -112,5 +116,6 @@ export function parseServerConfig(env: NodeJS.ProcessEnv): ServerConfig {
     appfiguresContextPath: str(env, 'SERVER_APPFIGURES_CONTEXT', defaultAppfiguresContextPath),
     beadsEnabled: bool(env, 'SERVER_BEADS_ENABLED', true),
     avatarsDir: str(env, 'SERVER_AVATARS_DIR', defaultAvatarsDir),
+    workspacesBaseDir: str(env, 'SERVER_WORKSPACES_DIR', defaultWorkspacesBaseDir),
   };
 }

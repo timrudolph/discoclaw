@@ -19,9 +19,6 @@ extension AppDatabase {
                 t.column("isProtected", .boolean).notNull().defaults(to: false)
                 t.column("kind", .text)
                 t.column("modelOverride", .text)
-                t.column("soul", .text)
-                t.column("identity", .text)
-                t.column("userBio", .text)
                 t.column("assistantName", .text)
                 t.column("accentColor", .text)
             }

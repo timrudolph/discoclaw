@@ -96,27 +96,15 @@ function buildPrompt(
   conversationMemoryItems: MemoryItemRow[],
   appfiguresContext: string | null,
   contextModulesContent: string,
-  persona: { soul: string | null; identity: string | null; userBio: string | null },
-  workspace: { soul: string | null; identity: string | null; userBio: string | null; memory: string | null },
+  workspaceMemory: string | null,
 ): string {
   const MAX_HISTORY = 20;
   const recent = history.slice(-MAX_HISTORY);
 
-  // Persona: per-conversation fields take precedence; workspace files are the global fallback.
-  // Injected at the very top so they frame everything that follows.
-  const effectiveSoul     = persona.soul     ?? workspace.soul;
-  const effectiveIdentity = persona.identity ?? workspace.identity;
-  const effectiveUserBio  = persona.userBio  ?? workspace.userBio;
-
-  let personaBlock = '';
-  if (effectiveSoul)     personaBlock += `${effectiveSoul.trim()}\n\n`;
-  if (effectiveIdentity) personaBlock += `${effectiveIdentity.trim()}\n\n`;
-  if (effectiveUserBio)  personaBlock += `${effectiveUserBio.trim()}\n\n`;
-  if (personaBlock)      personaBlock += '---\n\n';
-
   // Workspace MEMORY.md — free-form scratchpad, always injected if present.
-  const workspaceMemoryBlock = workspace.memory
-    ? `Workspace notes:\n\n${workspace.memory}\n\n---\n\n`
+  // Identity (SOUL.md / IDENTITY.md / USER.md) is now read by Claude from its CWD automatically.
+  const workspaceMemoryBlock = workspaceMemory
+    ? `Workspace notes:\n\n${workspaceMemory}\n\n---\n\n`
     : '';
 
   const systemPrefix = kind && KIND_SYSTEM_PREFIX[kind]
@@ -139,7 +127,7 @@ function buildPrompt(
     ? `${appfiguresContext}\n\n---\n\n`
     : '';
 
-  if (recent.length === 0) return personaBlock + systemPrefix + memoryBlock + workspaceMemoryBlock + appfiguresBlock + contextModulesContent + userContent;
+  if (recent.length === 0) return systemPrefix + memoryBlock + chatMemoryBlock + workspaceMemoryBlock + appfiguresBlock + contextModulesContent + userContent;
 
   const lines = recent
     .filter((m) => m.status === 'complete' && m.content.trim())
@@ -147,7 +135,7 @@ function buildPrompt(
     .join('\n\n');
 
   const historyBlock = lines ? `Recent conversation:\n\n${lines}\n\n---\n\n` : '';
-  return personaBlock + systemPrefix + memoryBlock + workspaceMemoryBlock + appfiguresBlock + contextModulesContent + historyBlock + userContent;
+  return systemPrefix + memoryBlock + chatMemoryBlock + workspaceMemoryBlock + appfiguresBlock + contextModulesContent + historyBlock + userContent;
 }
 
 export type InvokeOptions = {
@@ -202,22 +190,18 @@ export async function invokeRuntime(opts: InvokeOptions): Promise<string> {
     } catch { /* skip missing */ }
   }
 
-  const persona = {
-    soul:     conversation.soul     ?? null,
-    identity: conversation.identity ?? null,
-    userBio:  conversation.user_bio ?? null,
-  };
+  // Use the conversation's workspace as CWD so Claude naturally reads SOUL.md / IDENTITY.md / USER.md.
+  // Add the global workspace via --add-dir so Claude still has access to shared tools and context.
+  const conversationWorkspace = conversation.workspace_path ?? config.workspaceCwd;
+  const addDirs = conversation.workspace_path && conversation.workspace_path !== config.workspaceCwd
+    ? [config.workspaceCwd]
+    : undefined;
 
-  // Load workspace files as global defaults (per-conversation persona takes precedence).
-  const [wsSoul, wsIdentity, wsUserBio, wsMemory] = await Promise.all([
-    readWorkspaceFile(config.workspaceCwd, 'SOUL.md'),
-    readWorkspaceFile(config.workspaceCwd, 'IDENTITY.md'),
-    readWorkspaceFile(config.workspaceCwd, 'USER.md'),
-    readWorkspaceFile(config.workspaceCwd, 'MEMORY.md'),
-  ]);
-  const workspace = { soul: wsSoul, identity: wsIdentity, userBio: wsUserBio, memory: wsMemory };
+  // Read MEMORY.md from the conversation workspace (injected into the prompt as text).
+  const wsMemory = await readWorkspaceFile(conversationWorkspace, 'MEMORY.md');
 
-  const prompt = buildPrompt(history, opts.userMessageContent, conversation.kind, memoryItems, conversationMemoryItems, appfiguresContext, contextModulesContent, persona, workspace);
+  const prompt = buildPrompt(history, opts.userMessageContent, conversation.kind, memoryItems, conversationMemoryItems, appfiguresContext, contextModulesContent, wsMemory);
+
   const assistantId = crypto.randomUUID();
   const assistantSeq = nextSeq();
   const now = Date.now();
@@ -240,6 +224,7 @@ export async function invokeRuntime(opts: InvokeOptions): Promise<string> {
   streamInBackground({
     db, hub, runtime, config, conversation,
     assistantId, assistantSeq, prompt, sessionId,
+    cwd: conversationWorkspace, addDirs,
   });
 
   return assistantId;
@@ -255,6 +240,9 @@ type StreamParams = {
   assistantSeq: number;
   prompt: string;
   sessionId: string;
+  cwd: string;
+  addDirs: string[] | undefined;
+  appendSystemPrompt?: string;
 };
 
 /** Returns true if the error is a Claude CLI session-ID conflict. */
@@ -272,7 +260,7 @@ function streamInBackground(params: StreamParams): void {
  * once transparently, so the user never sees the error.
  */
 async function doStream(params: StreamParams, isRetry: boolean): Promise<void> {
-  const { db, hub, runtime, config, conversation, assistantId, assistantSeq, prompt, sessionId } = params;
+  const { db, hub, runtime, config, conversation, assistantId, assistantSeq, prompt, sessionId, cwd, addDirs, appendSystemPrompt } = params;
   const userId = conversation.user_id;
   let fullContent = '';
   // The runtime always emits done after error as a cleanup signal.
@@ -288,10 +276,12 @@ async function doStream(params: StreamParams, isRetry: boolean): Promise<void> {
     const events = runtime.invoke({
       prompt,
       model: conversation.model_override ?? config.runtimeModel,
-      cwd: config.workspaceCwd,
+      cwd,
+      addDirs,
       sessionId,
       tools: config.runtimeTools,
       timeoutMs: config.runtimeTimeoutMs,
+      appendSystemPrompt,
     });
 
     for await (const event of events) {

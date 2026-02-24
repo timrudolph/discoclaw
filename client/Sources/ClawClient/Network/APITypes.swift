@@ -361,23 +361,6 @@ public struct CreateContextModuleRequest: Encodable {
     public let content: String
 }
 
-// ─── Persona ───────────────────────────────────────────────────────────────────
-
-public struct ConversationPersona: Decodable {
-    public let soul: String?
-    public let identity: String?
-    public let userBio: String?
-}
-
-public struct UpdatePersonaRequest: Encodable {
-    public let soul: String?
-    public let identity: String?
-    public let userBio: String?
-    public init(soul: String?, identity: String?, userBio: String?) {
-        self.soul = soul; self.identity = identity; self.userBio = userBio
-    }
-}
-
 // ─── Health / Features ────────────────────────────────────────────────────────
 
 public struct HealthResponse: Decodable {
@@ -405,9 +388,6 @@ public struct SyncResponse: Decodable {
         public let updatedAt: Int
         public let createdAt: Int
         public let archivedAt: Int?
-        public let soul: String?
-        public let identity: String?
-        public let userBio: String?
 
         public func toConversation() -> Conversation {
             Conversation(
@@ -420,9 +400,6 @@ public struct SyncResponse: Decodable {
                 isProtected: isProtected ?? false,
                 kind: kind,
                 modelOverride: modelOverride,
-                soul: soul,
-                identity: identity,
-                userBio: userBio,
                 assistantName: assistantName,
                 accentColor: accentColor
             )

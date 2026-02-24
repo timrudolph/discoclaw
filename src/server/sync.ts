@@ -54,9 +54,6 @@ export function registerSyncRoutes(app: FastifyInstance, db: Db): void {
         updatedAt: c.updated_at,
         createdAt: c.created_at,
         archivedAt: c.archived_at ?? undefined,
-        soul:     c.soul     ?? undefined,
-        identity: c.identity ?? undefined,
-        userBio:  c.user_bio ?? undefined,
       })),
       messages: messages.map((m) => ({
         id: m.id,

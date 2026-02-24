@@ -208,11 +208,22 @@ public final class APIClient: Sendable {
         try checkStatus(response, data: data)
     }
 
-    // MARK: - Persona
+    // MARK: - Conversation workspace files
 
-    public func updatePersona(conversationId: String, soul: String?, identity: String?, userBio: String?) async throws -> ConversationPersona {
-        try await put("/conversations/\(conversationId)/persona",
-                      body: UpdatePersonaRequest(soul: soul, identity: identity, userBio: userBio))
+    public func listConversationWorkspaceFiles(conversationId: String) async throws -> WorkspaceFilesResponse {
+        try await get("/conversations/\(conversationId)/workspace/files")
+    }
+
+    public func getConversationWorkspaceFile(conversationId: String, name: String) async throws -> WorkspaceFileResponse {
+        try await get("/conversations/\(conversationId)/workspace/files/\(name)")
+    }
+
+    public func updateConversationWorkspaceFile(conversationId: String, name: String, content: String) async throws {
+        var req = makeRequest("PUT", "/conversations/\(conversationId)/workspace/files/\(name)")
+        req.httpBody = try JSONEncoder().encode(WorkspaceFileUpdateRequest(content: content))
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let (data, response) = try await session.data(for: req)
+        try checkStatus(response, data: data)
     }
 
     public func resetConversationSession(conversationId: String) async throws {

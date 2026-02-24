@@ -4,7 +4,7 @@ import ClawClient
 struct NewConversationView: View {
     let api: APIClient
     let onCreate: (String) -> Void
-    let create: (_ title: String?, _ modules: [String], _ memory: String?, _ soul: String?, _ identity: String?, _ userBio: String?) async -> String?
+    let create: (_ title: String?, _ modules: [String], _ memory: String?) async -> String?
 
     // ── Name ──────────────────────────────────────────────────────────────────
     @State private var title = ""
@@ -268,16 +268,23 @@ struct NewConversationView: View {
         let trimmedUserBio  = userBio.trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard let id = await create(
-            trimmedTitle.isEmpty    ? nil : trimmedTitle,
+            trimmedTitle.isEmpty  ? nil : trimmedTitle,
             Array(selectedModules),
-            trimmedMemory.isEmpty   ? nil : trimmedMemory,
-            trimmedSoul.isEmpty     ? nil : trimmedSoul,
-            trimmedIdentity.isEmpty ? nil : trimmedIdentity,
-            trimmedUserBio.isEmpty  ? nil : trimmedUserBio
+            trimmedMemory.isEmpty ? nil : trimmedMemory
         ) else {
             error = "Failed to create conversation."
             isCreating = false
             return
+        }
+
+        // Write identity files to the conversation workspace
+        let writes: [(String, String)] = [
+            ("SOUL.md", trimmedSoul),
+            ("IDENTITY.md", trimmedIdentity),
+            ("USER.md", trimmedUserBio),
+        ].filter { !$0.1.isEmpty }
+        for (name, content) in writes {
+            _ = try? await api.updateConversationWorkspaceFile(conversationId: id, name: name, content: content)
         }
 
         // Apply model override if changed from default

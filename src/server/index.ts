@@ -81,18 +81,25 @@ function ensureProtectedConversation(userId: string, kind: string): void {
   if (exists) return;
   const title    = PROTECTED_CONVERSATIONS[kind] ?? kind;
   const defaults = PROTECTED_CONVERSATION_DEFAULTS[kind];
+  const id = crypto.randomUUID();
   const now = Date.now();
+
+  // Create workspace directory and write identity files as actual files
+  const workspacePath = path.join(config.workspacesBaseDir, id);
+  fs.mkdirSync(workspacePath, { recursive: true });
+  if (defaults?.soul)     fs.writeFileSync(path.join(workspacePath, 'SOUL.md'),     defaults.soul,     'utf8');
+  if (defaults?.identity) fs.writeFileSync(path.join(workspacePath, 'IDENTITY.md'), defaults.identity, 'utf8');
+
   db.prepare(`
     INSERT INTO conversations
       (id, user_id, title, created_at, updated_at, is_protected, kind,
-       assistant_name, accent_color, soul, identity)
-    VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
+       assistant_name, accent_color, workspace_path)
+    VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
   `).run(
-    crypto.randomUUID(), userId, title, now, now, kind,
+    id, userId, title, now, now, kind,
     defaults?.assistantName ?? null,
     defaults?.accentColor   ?? null,
-    defaults?.soul          ?? null,
-    defaults?.identity      ?? null,
+    workspacePath,
   );
   log.info({ userId, kind }, 'server:protected-conversation:created');
 }
@@ -110,11 +117,12 @@ try {
   process.exit(1);
 }
 
-const db = openDb(config.dbPath);
+const db = openDb(config.dbPath, config.workspacesBaseDir);
 log.info({ dbPath: config.dbPath }, 'database opened');
 
-// Create avatars directory (idempotent)
+// Create avatars and workspaces directories (idempotent)
 fs.mkdirSync(config.avatarsDir, { recursive: true });
+fs.mkdirSync(config.workspacesBaseDir, { recursive: true });
 
 // ─── Runtime ──────────────────────────────────────────────────────────────────
 
@@ -595,7 +603,7 @@ app.delete<{ Params: { name: string } }>(
 await app.register(async (authed) => {
   authed.addHook('preHandler', authHook);
 
-  registerConversationRoutes(authed, db);
+  registerConversationRoutes(authed, db, config);
   registerMessageRoutes(authed, db, hub, runtime, config);
   registerSyncRoutes(authed, db);
   if (config.beadsEnabled) registerBeadsRoutes(authed, db, hub);

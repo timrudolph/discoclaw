@@ -169,9 +169,8 @@ struct AppRootView: View {
             NewConversationView(
                 api: container.api,
                 onCreate: { id in selectedConversationId = id },
-                create: { title, modules, memory, soul, identity, userBio in
-                    await makeConversation(container: container, title: title, modules: modules,
-                                          memory: memory, soul: soul, identity: identity, userBio: userBio)
+                create: { title, modules, memory in
+                    await makeConversation(container: container, title: title, modules: modules, memory: memory)
                 }
             )
         }
@@ -262,9 +261,8 @@ struct AppRootView: View {
             NewConversationView(
                 api: container.api,
                 onCreate: { id in selectedConversationId = id },
-                create: { title, modules, memory, soul, identity, userBio in
-                    await makeConversation(container: container, title: title, modules: modules,
-                                          memory: memory, soul: soul, identity: identity, userBio: userBio)
+                create: { title, modules, memory in
+                    await makeConversation(container: container, title: title, modules: modules, memory: memory)
                 }
             )
         }
@@ -297,10 +295,7 @@ struct AppRootView: View {
         container: AppContainer,
         title: String?,
         modules: [String],
-        memory: String?,
-        soul: String? = nil,
-        identity: String? = nil,
-        userBio: String? = nil
+        memory: String?
     ) async -> String? {
         do {
             let detail = try await container.api.createConversation(title: title)
@@ -313,20 +308,11 @@ struct AppRootView: View {
                 archivedAt: nil,
                 isProtected: detail.isProtected ?? false,
                 kind: detail.kind,
-                modelOverride: detail.modelOverride,
-                soul: soul,
-                identity: identity,
-                userBio: userBio
+                modelOverride: detail.modelOverride
             )
             try await container.conversationRepo.save(conv)
             if !modules.isEmpty {
                 try? await container.api.setConversationModules(conversationId: detail.id, modules: modules)
-            }
-            if soul != nil || identity != nil || userBio != nil {
-                _ = try? await container.api.updatePersona(
-                    conversationId: detail.id,
-                    soul: soul, identity: identity, userBio: userBio
-                )
             }
             if let memory, !memory.isEmpty {
                 _ = try? await container.api.addConversationMemory(

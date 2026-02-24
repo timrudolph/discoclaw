@@ -13,12 +13,12 @@ export function nextSeq(): number {
   return _lastSeq;
 }
 
-export function openDb(dbPath: string): Db {
+export function openDb(dbPath: string, workspacesBaseDir: string): Db {
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
   const db = new Database(dbPath);
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
-  migrate(db);
+  migrate(db, workspacesBaseDir);
   return db;
 }
 
@@ -57,6 +57,7 @@ export type ConversationRow = {
   user_bio: string | null;          // Per-conversation USER.md — who is being helped
   assistant_name: string | null;    // Display name for the assistant in this conversation
   accent_color: string | null;      // Hex accent color, e.g. "#A08060"
+  workspace_path: string | null;    // Per-conversation workspace directory
 };
 
 export type MessageRow = {
@@ -111,7 +112,7 @@ export type BeadRow = {
 
 // ─── Migrations ───────────────────────────────────────────────────────────────
 
-function migrate(db: Db): void {
+function migrate(db: Db, workspacesBaseDir: string): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
       version INTEGER PRIMARY KEY
@@ -125,6 +126,7 @@ function migrate(db: Db): void {
   const migrations: [number, () => void][] = [
     [0, () => v0(db)],
     [1, () => v1(db)],
+    [2, () => v2(db, workspacesBaseDir)],
   ];
 
   for (const [version, run] of migrations) {
@@ -244,4 +246,18 @@ function v1(db: Db): void {
     ALTER TABLE memory_items ADD COLUMN conversation_id TEXT REFERENCES conversations(id) ON DELETE CASCADE;
     CREATE INDEX idx_memory_conv ON memory_items(conversation_id, deprecated_at);
   `);
+}
+
+function v2(db: Db, workspacesBaseDir: string): void {
+  db.exec(`ALTER TABLE conversations ADD COLUMN workspace_path TEXT`);
+  // For existing conversations: create workspace dirs and write identity files from old DB columns.
+  const rows = db.prepare('SELECT id, soul, identity, user_bio FROM conversations').all();
+  for (const row of rows as Array<{ id: string; soul: string | null; identity: string | null; user_bio: string | null }>) {
+    const workspacePath = path.join(workspacesBaseDir, row.id);
+    fs.mkdirSync(workspacePath, { recursive: true });
+    if (row.soul)     fs.writeFileSync(path.join(workspacePath, 'SOUL.md'),     row.soul,     'utf8');
+    if (row.identity) fs.writeFileSync(path.join(workspacePath, 'IDENTITY.md'), row.identity, 'utf8');
+    if (row.user_bio) fs.writeFileSync(path.join(workspacePath, 'USER.md'),     row.user_bio, 'utf8');
+    db.prepare('UPDATE conversations SET workspace_path = ? WHERE id = ?').run(workspacePath, row.id);
+  }
 }

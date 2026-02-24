@@ -1,9 +1,14 @@
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import type { Db, ConversationRow } from './db.js';
 import { nextSeq } from './db.js';
+import type { ServerConfig } from './config.js';
 
-export function registerConversationRoutes(app: FastifyInstance, db: Db): void {
+const WORKSPACE_CONV_ALLOWED = new Set(['SOUL.md', 'IDENTITY.md', 'USER.md', 'MEMORY.md', 'AGENTS.md', 'TOOLS.md']);
+
+export function registerConversationRoutes(app: FastifyInstance, db: Db, config: ServerConfig): void {
   // GET /conversations
   app.get('/conversations', async (req) => {
     const { archived } = req.query as { archived?: string };
@@ -58,6 +63,19 @@ export function registerConversationRoutes(app: FastifyInstance, db: Db): void {
       INSERT INTO conversations (id, user_id, title, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?)
     `).run(id, req.user.id, title ?? null, now, now);
+
+    // Create the conversation's workspace directory
+    const workspacePath = path.join(config.workspacesBaseDir, id);
+    fs.mkdirSync(workspacePath, { recursive: true });
+
+    // Seed identity files from global workspace defaults if they exist
+    for (const name of ['SOUL.md', 'IDENTITY.md', 'USER.md'] as const) {
+      try {
+        fs.copyFileSync(path.join(config.workspaceCwd, name), path.join(workspacePath, name));
+      } catch { /* file absent in global workspace, fine */ }
+    }
+
+    db.prepare('UPDATE conversations SET workspace_path = ? WHERE id = ?').run(workspacePath, id);
 
     const row = db
       .prepare('SELECT * FROM conversations WHERE id = ?')
@@ -155,60 +173,6 @@ export function registerConversationRoutes(app: FastifyInstance, db: Db): void {
     };
   });
 
-  // GET /conversations/:id/persona
-  app.get<{ Params: { id: string } }>('/conversations/:id/persona', async (req, reply) => {
-    const row = db
-      .prepare('SELECT soul, identity, user_bio FROM conversations WHERE id = ? AND user_id = ?')
-      .get(req.params.id, req.user.id) as Pick<ConversationRow, 'soul' | 'identity' | 'user_bio'> | undefined;
-
-    if (!row) return reply.notFound();
-
-    return {
-      soul:     row.soul     ?? null,
-      identity: row.identity ?? null,
-      userBio:  row.user_bio ?? null,
-    };
-  });
-
-  // PUT /conversations/:id/persona
-  app.put<{ Params: { id: string } }>('/conversations/:id/persona', async (req, reply) => {
-    const row = db
-      .prepare('SELECT id FROM conversations WHERE id = ? AND user_id = ?')
-      .get(req.params.id, req.user.id) as { id: string } | undefined;
-
-    if (!row) return reply.notFound();
-
-    const { soul, identity, userBio } = req.body as {
-      soul?: string | null;
-      identity?: string | null;
-      userBio?: string | null;
-    };
-
-    const now = Date.now();
-    if (soul !== undefined) {
-      db.prepare('UPDATE conversations SET soul = ?, updated_at = ? WHERE id = ?')
-        .run(soul ?? null, now, row.id);
-    }
-    if (identity !== undefined) {
-      db.prepare('UPDATE conversations SET identity = ?, updated_at = ? WHERE id = ?')
-        .run(identity ?? null, now, row.id);
-    }
-    if (userBio !== undefined) {
-      db.prepare('UPDATE conversations SET user_bio = ?, updated_at = ? WHERE id = ?')
-        .run(userBio ?? null, now, row.id);
-    }
-
-    const updated = db
-      .prepare('SELECT soul, identity, user_bio FROM conversations WHERE id = ?')
-      .get(row.id) as Pick<ConversationRow, 'soul' | 'identity' | 'user_bio'>;
-
-    reply.status(200).send({
-      soul:     updated.soul     ?? null,
-      identity: updated.identity ?? null,
-      userBio:  updated.user_bio ?? null,
-    });
-  });
-
   // DELETE /conversations/:id
   app.delete<{ Params: { id: string } }>('/conversations/:id', async (req, reply) => {
     const row = db
@@ -217,10 +181,77 @@ export function registerConversationRoutes(app: FastifyInstance, db: Db): void {
 
     if (!row) return reply.notFound();
 
-    const full = db.prepare('SELECT is_protected FROM conversations WHERE id = ?').get(row.id) as { is_protected: number };
+    const full = db.prepare('SELECT is_protected, workspace_path FROM conversations WHERE id = ?').get(row.id) as { is_protected: number; workspace_path: string | null };
     if (full.is_protected) return reply.status(403).send({ error: 'Cannot delete a protected conversation.' });
 
+    // Remove the conversation's workspace directory
+    if (full.workspace_path) {
+      try { fs.rmSync(full.workspace_path, { recursive: true, force: true }); } catch { /* ignore */ }
+    }
+
     db.prepare('DELETE FROM conversations WHERE id = ?').run(row.id);
+    reply.status(204).send();
+  });
+
+  // ─── Conversation workspace file endpoints ────────────────────────────────
+
+  // GET /conversations/:id/workspace/files — list workspace files with preview
+  app.get<{ Params: { id: string } }>('/conversations/:id/workspace/files', async (req, reply) => {
+    const conv = db
+      .prepare('SELECT workspace_path FROM conversations WHERE id = ? AND user_id = ?')
+      .get(req.params.id, req.user.id) as { workspace_path: string | null } | undefined;
+    if (!conv) return reply.notFound();
+
+    const workspacePath = conv.workspace_path ?? path.join(config.workspacesBaseDir, req.params.id);
+    const files = await Promise.all(
+      [...WORKSPACE_CONV_ALLOWED].map(async (name) => {
+        const filePath = path.join(workspacePath, name);
+        try {
+          const content = await fs.promises.readFile(filePath, 'utf8');
+          const preview = content.split('\n').find(l => l.trim())?.slice(0, 120) ?? '';
+          return { name, exists: true, preview };
+        } catch {
+          return { name, exists: false, preview: '' };
+        }
+      }),
+    );
+    return { files };
+  });
+
+  // GET /conversations/:id/workspace/files/:name — get file content
+  app.get<{ Params: { id: string; name: string } }>('/conversations/:id/workspace/files/:name', async (req, reply) => {
+    if (!WORKSPACE_CONV_ALLOWED.has(req.params.name)) return reply.forbidden('File not in allowed list');
+
+    const conv = db
+      .prepare('SELECT workspace_path FROM conversations WHERE id = ? AND user_id = ?')
+      .get(req.params.id, req.user.id) as { workspace_path: string | null } | undefined;
+    if (!conv) return reply.notFound();
+
+    const workspacePath = conv.workspace_path ?? path.join(config.workspacesBaseDir, req.params.id);
+    const filePath = path.join(workspacePath, req.params.name);
+    try {
+      const content = await fs.promises.readFile(filePath, 'utf8');
+      return { name: req.params.name, content };
+    } catch {
+      return { name: req.params.name, content: '' };
+    }
+  });
+
+  // PUT /conversations/:id/workspace/files/:name — write file content
+  app.put<{ Params: { id: string; name: string } }>('/conversations/:id/workspace/files/:name', async (req, reply) => {
+    if (!WORKSPACE_CONV_ALLOWED.has(req.params.name)) return reply.forbidden('File not in allowed list');
+
+    const conv = db
+      .prepare('SELECT workspace_path FROM conversations WHERE id = ? AND user_id = ?')
+      .get(req.params.id, req.user.id) as { workspace_path: string | null } | undefined;
+    if (!conv) return reply.notFound();
+
+    const { content } = req.body as { content?: string };
+    if (content === undefined) return reply.badRequest('content is required');
+
+    const workspacePath = conv.workspace_path ?? path.join(config.workspacesBaseDir, req.params.id);
+    await fs.promises.mkdir(workspacePath, { recursive: true });
+    await fs.promises.writeFile(path.join(workspacePath, req.params.name), content, 'utf8');
     reply.status(204).send();
   });
 }

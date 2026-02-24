@@ -35,11 +35,11 @@ See `.context/README.md` for details.
 ## Identity
 
 On session start, read your workspace identity files if they exist:
-1. `workspace/SOUL.md` — who you are
-2. `workspace/IDENTITY.md` — your name and vibe
-3. `workspace/USER.md` — who you're helping
+1. `SOUL.md` — who you are
+2. `IDENTITY.md` — your name and vibe
+3. `USER.md` — who you're helping
 
-These are personal, gitignored, and may not exist yet. If `workspace/BOOTSTRAP.md`
+These are personal, gitignored, and may not exist yet. If `BOOTSTRAP.md`
 exists, that's your first run — read it, follow it, then delete it.
 
 ## Working Rules
