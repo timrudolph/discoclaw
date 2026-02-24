@@ -76,6 +76,15 @@ const KIND_SYSTEM_PREFIX: Record<string, string> = {
   ].join(' '),
 };
 
+/** Returns true if the workspace dir contains at least one non-empty identity file. */
+async function hasCustomIdentity(workspacePath: string): Promise<boolean> {
+  for (const name of ['SOUL.md', 'IDENTITY.md', 'USER.md']) {
+    const content = await readWorkspaceFile(workspacePath, name);
+    if (content !== null) return true;
+  }
+  return false;
+}
+
 /** Read a workspace file, returning its trimmed content or null if missing/empty. */
 async function readWorkspaceFile(workspaceCwd: string, name: string): Promise<string | null> {
   try {
@@ -190,12 +199,16 @@ export async function invokeRuntime(opts: InvokeOptions): Promise<string> {
     } catch { /* skip missing */ }
   }
 
-  // Use the conversation's workspace as CWD so Claude naturally reads SOUL.md / IDENTITY.md / USER.md.
-  // Add the global workspace via --add-dir so Claude still has access to shared tools and context.
+  // Determine CWD for this invocation.
+  // If the conversation workspace has custom identity files (non-empty SOUL/IDENTITY/USER),
+  // use it as CWD and add the global workspace via --add-dir for shared tools/context.
+  // Otherwise fall back to the global workspace as CWD so Claude naturally picks up the
+  // global identity — no snapshotting, always live.
   const conversationWorkspace = conversation.workspace_path ?? config.workspaceCwd;
-  const addDirs = conversation.workspace_path && conversation.workspace_path !== config.workspaceCwd
-    ? [config.workspaceCwd]
-    : undefined;
+  const useConvWorkspace = conversationWorkspace !== config.workspaceCwd
+    && await hasCustomIdentity(conversationWorkspace);
+  const cwd = useConvWorkspace ? conversationWorkspace : config.workspaceCwd;
+  const addDirs = useConvWorkspace ? [config.workspaceCwd] : undefined;
 
   // Read MEMORY.md from the conversation workspace (injected into the prompt as text).
   const wsMemory = await readWorkspaceFile(conversationWorkspace, 'MEMORY.md');

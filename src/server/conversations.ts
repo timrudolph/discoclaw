@@ -64,17 +64,10 @@ export function registerConversationRoutes(app: FastifyInstance, db: Db, config:
       VALUES (?, ?, ?, ?, ?)
     `).run(id, req.user.id, title ?? null, now, now);
 
-    // Create the conversation's workspace directory
+    // Create the conversation's workspace directory (empty — no seeding from global workspace).
+    // Identity falls back to global workspace at invoke time when no custom files are present.
     const workspacePath = path.join(config.workspacesBaseDir, id);
     fs.mkdirSync(workspacePath, { recursive: true });
-
-    // Seed identity files from global workspace defaults if they exist
-    for (const name of ['SOUL.md', 'IDENTITY.md', 'USER.md'] as const) {
-      try {
-        fs.copyFileSync(path.join(config.workspaceCwd, name), path.join(workspacePath, name));
-      } catch { /* file absent in global workspace, fine */ }
-    }
-
     db.prepare('UPDATE conversations SET workspace_path = ? WHERE id = ?').run(workspacePath, id);
 
     const row = db
