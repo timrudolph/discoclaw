@@ -113,10 +113,10 @@ struct AppRootView: View {
                             container.syncEngine.stop()
                             SessionConfig.clear()
                             SyncCursor.reset()
-                            AppDatabase.destroy()
                             selectedConversationId = nil
                             selectedConversation = nil
-                            self.container = nil
+                            self.container = nil   // close DatabasePool before deleting files
+                            AppDatabase.destroy()
                         }
                     )
                 case .beads:
@@ -223,10 +223,10 @@ struct AppRootView: View {
                             container.syncEngine.stop()
                             SessionConfig.clear()
                             SyncCursor.reset()
-                            AppDatabase.destroy()
                             selectedConversationId = nil
                             selectedConversation = nil
-                            self.container = nil
+                            self.container = nil   // close DatabasePool before deleting files
+                            AppDatabase.destroy()
                         }
                     )
                 case .beads:
