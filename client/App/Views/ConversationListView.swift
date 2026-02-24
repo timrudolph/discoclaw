@@ -8,7 +8,6 @@ struct ConversationListView: View {
     let onNewChat: () -> Void
     let api: APIClient
     @Binding var sidebarMode: SidebarMode
-    let isTabContext: Bool
     @StateObject private var viewModel: ConversationListViewModel
     @EnvironmentObject private var syncEngine: SyncEngine
 
@@ -26,11 +25,10 @@ struct ConversationListView: View {
 
     @AppStorage("appearance") private var appearance = "auto"
 
-    init(selectedId: Binding<String?>, repo: ConversationRepository, messageRepo: MessageRepository, api: APIClient, sidebarMode: Binding<SidebarMode>, isTabContext: Bool = false, onNewChat: @escaping () -> Void, onSignOut: @escaping () -> Void) {
+    init(selectedId: Binding<String?>, repo: ConversationRepository, messageRepo: MessageRepository, api: APIClient, sidebarMode: Binding<SidebarMode>, onNewChat: @escaping () -> Void, onSignOut: @escaping () -> Void) {
         _selectedId = selectedId
         self.api = api
         _sidebarMode = sidebarMode
-        self.isTabContext = isTabContext
         _viewModel = StateObject(wrappedValue: ConversationListViewModel(repo: repo, messageRepo: messageRepo, api: api))
         self.onNewChat = onNewChat
         self.onSignOut = onSignOut
@@ -105,12 +103,19 @@ struct ConversationListView: View {
         .onChange(of: searchText) { _, query in
             Task { await performMessageSearch(query: query) }
         }
+        #if os(macOS)
         .listStyle(.sidebar)
-        .if(isTabContext) { $0.searchable(text: $searchText, prompt: "Search") }
+        #else
+        .listStyle(.plain)
+        #endif
+        #if os(iOS)
+        .navigationTitle(UIDevice.current.userInterfaceIdiom == .phone ? "" : "Chats")
+        .navigationBarHidden(UIDevice.current.userInterfaceIdiom == .phone)
+        #else
         .navigationTitle("Chats")
+        #endif
         .safeAreaInset(edge: .top) {
-            if !isTabContext {
-                VStack(spacing: 0) {
+            VStack(spacing: 0) {
                     HStack(spacing: 8) {
                         Picker("", selection: $sidebarMode) {
                             Text("Chats").tag(SidebarMode.chats)
@@ -158,7 +163,6 @@ struct ConversationListView: View {
                 }
                 .background(.bar)
                 .animation(.easeInOut(duration: 0.2), value: isSearchExpanded)
-            }
         }
         .overlay {
             if viewModel.conversations.isEmpty {
@@ -215,8 +219,9 @@ struct ConversationListView: View {
 
     @ViewBuilder
     private func conversationRow(for conversation: Conversation) -> some View {
-        if isTabContext {
-            NavigationLink(value: conversation.id) {
+        #if os(iOS)
+        if UIDevice.current.userInterfaceIdiom == .phone {
+            NavigationLink(value: PhoneNav(dest: .chat, id: conversation.id)) {
                 ConversationRow(
                     conversation: conversation,
                     lastMessage: viewModel.lastMessages[conversation.id]
@@ -235,6 +240,16 @@ struct ConversationListView: View {
                 conversationSwipeActions(for: conversation)
             }
         }
+        #else
+        ConversationRow(
+            conversation: conversation,
+            lastMessage: viewModel.lastMessages[conversation.id]
+        )
+        .tag(conversation.id)
+        .swipeActions(edge: .trailing, allowsFullSwipe: !conversation.isProtected) {
+            conversationSwipeActions(for: conversation)
+        }
+        #endif
     }
 
     // MARK: - Swipe actions
@@ -503,7 +518,11 @@ private struct ConversationRow: View {
                 }
             }
         }
+        #if os(macOS)
         .padding(.vertical, 2)
+        #else
+        .padding(.vertical, 6)
+        #endif
     }
 }
 
@@ -682,14 +701,5 @@ private struct ProfileView: View {
         else { return nil }
         return jpeg
         #endif
-    }
-}
-
-// MARK: - Conditional modifier helper
-
-private extension View {
-    @ViewBuilder
-    func `if`<T: View>(_ condition: Bool, transform: (Self) -> T) -> some View {
-        if condition { transform(self) } else { self }
     }
 }

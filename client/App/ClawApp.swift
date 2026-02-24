@@ -34,6 +34,15 @@ enum SidebarMode {
     case chats, beads
 }
 
+#if os(iOS)
+/// Typed navigation destination for the iPhone NavigationStack — disambiguates chat vs bead IDs.
+struct PhoneNav: Hashable {
+    enum Dest { case chat, bead }
+    let dest: Dest
+    let id: String
+}
+#endif
+
 struct AppRootView: View {
     @State private var container: AppContainer? = {
         guard let session = SessionConfig.load() else { return nil }
@@ -41,9 +50,6 @@ struct AppRootView: View {
     }()
 
     @Environment(\.scenePhase) private var scenePhase
-    #if os(iOS)
-    @Environment(\.horizontalSizeClass) private var sizeClass
-    #endif
 
     @State private var sidebarMode: SidebarMode = .chats
 
@@ -69,14 +75,14 @@ struct AppRootView: View {
 
     var body: some View {
         if let container {
-            #if os(macOS)
-            splitView(container: container)
-            #else
-            if sizeClass == .compact {
-                iPhoneTabView(container: container)
+            #if os(iOS)
+            if UIDevice.current.userInterfaceIdiom == .phone {
+                phoneView(container: container)
             } else {
                 splitView(container: container)
             }
+            #else
+            splitView(container: container)
             #endif
         } else {
             OnboardingView { newSession in
@@ -164,11 +170,13 @@ struct AppRootView: View {
         }
         .task {
             await container.syncEngine.start()
+            #if os(macOS)
             if selectedConversationId == nil {
                 if let general = try? await container.conversationRepo.firstProtected() {
                     selectedConversationId = general.id
                 }
             }
+            #endif
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
@@ -184,56 +192,55 @@ struct AppRootView: View {
         .preferredColorScheme(preferredScheme)
     }
 
-    // MARK: - Tab view (iPhone compact)
+    // MARK: - Phone view (iPhone compact — NavigationStack, no TabView)
 
     #if os(iOS)
     @ViewBuilder
-    private func iPhoneTabView(container: AppContainer) -> some View {
-        TabView {
-            NavigationStack {
-                ConversationListView(
-                    selectedId: $selectedConversationId,
-                    repo: container.conversationRepo,
-                    messageRepo: container.messageRepo,
-                    api: container.api,
-                    sidebarMode: $sidebarMode,
-                    isTabContext: true,
-                    onNewChat: { showingNewConversation = true },
-                    onSignOut: {
-                        container.syncEngine.stop()
-                        SessionConfig.clear()
-                        SyncCursor.reset()
-                        AppDatabase.destroy()
-                        selectedConversationId = nil
-                        selectedConversation = nil
-                        self.container = nil
-                    }
-                )
-                .navigationDestination(for: String.self) { id in
-                    ChatView(
-                        conversationId: id,
-                        conversation: id == selectedConversationId ? selectedConversation : nil,
+    private func phoneView(container: AppContainer) -> some View {
+        NavigationStack {
+            Group {
+                switch sidebarMode {
+                case .chats:
+                    ConversationListView(
+                        selectedId: $selectedConversationId,
+                        repo: container.conversationRepo,
                         messageRepo: container.messageRepo,
-                        api: container.api
+                        api: container.api,
+                        sidebarMode: $sidebarMode,
+                        onNewChat: { showingNewConversation = true },
+                        onSignOut: {
+                            container.syncEngine.stop()
+                            SessionConfig.clear()
+                            SyncCursor.reset()
+                            AppDatabase.destroy()
+                            selectedConversationId = nil
+                            selectedConversation = nil
+                            self.container = nil
+                        }
+                    )
+                case .beads:
+                    BeadsListView(
+                        selectedId: $selectedBeadId,
+                        api: container.api,
+                        sidebarMode: $sidebarMode
                     )
                 }
             }
-            .tabItem { Label("Chats", systemImage: "bubble.left.and.bubble.right") }
-
-            NavigationStack {
-                BeadsListView(
-                    selectedId: $selectedBeadId,
-                    api: container.api,
-                    sidebarMode: $sidebarMode,
-                    isTabContext: true
-                )
-                .navigationDestination(for: String.self) { id in
-                    BeadDetailView(beadId: id, api: container.api) { updated in
+            .navigationDestination(for: PhoneNav.self) { nav in
+                switch nav.dest {
+                case .chat:
+                    ChatView(
+                        conversationId: nav.id,
+                        conversation: nav.id == selectedConversationId ? selectedConversation : nil,
+                        messageRepo: container.messageRepo,
+                        api: container.api
+                    )
+                case .bead:
+                    BeadDetailView(beadId: nav.id, api: container.api) { updated in
                         selectedBead = updated
                     }
                 }
             }
-            .tabItem { Label("Beads", systemImage: "checkmark.circle") }
         }
         .sheet(isPresented: $showingNewConversation) {
             NewConversationView(
@@ -245,14 +252,7 @@ struct AppRootView: View {
             )
         }
         .environmentObject(container.syncEngine)
-        .task {
-            await container.syncEngine.start()
-            if selectedConversationId == nil {
-                if let general = try? await container.conversationRepo.firstProtected() {
-                    selectedConversationId = general.id
-                }
-            }
-        }
+        .task { await container.syncEngine.start() }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
                 Task { await container.syncEngine.reconnectIfNeeded() }

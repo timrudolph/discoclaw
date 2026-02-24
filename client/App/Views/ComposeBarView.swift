@@ -3,40 +3,33 @@ import UniformTypeIdentifiers
 
 // MARK: - Auto-expanding editor
 
-/// Preference key used by the hidden sizer Text to report its height.
-private struct ComposeMeasuredHeightKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
-}
-
-/// A TextEditor that expands to fit its content without the lag that
-/// TextField(axis: .vertical) has on macOS for soft-wrapped lines.
+/// A TextEditor that starts at one line and expands to fit its content.
 ///
-/// How it works: a hidden Text view (which measures wrap height correctly and
-/// immediately) sits in the background and reports its height via a
-/// PreferenceKey. The TextEditor is then sized to match.
+/// Height is driven by measuring the text with NSAttributedString.boundingRect
+/// on every change, which is synchronous and reliable on both platforms.
 private struct GrowingTextEditor: View {
     @Binding var text: String
     var placeholder: String = "Message"
     var maxLines: Int = 8
-    /// Called when Return is pressed without Shift (macOS only). Always
-    /// prevents the newline from being inserted; caller decides whether to send.
+    /// Called when Return is pressed without Shift (macOS only).
     var onReturnKey: (() -> Void)? = nil
 
-    @State private var editorHeight: CGFloat = 28
+    @State private var editorHeight: CGFloat = 0
+    @State private var containerWidth: CGFloat = 0
 
-    // macOS body font line height ~18pt; TextEditor internal inset ~4pt top+bottom → 26pt.
-    // iOS body font line height ~22pt; TextEditor internal inset ~8pt top+bottom → 38pt.
+    // macOS: vPadding is added via .padding(.vertical) on TextEditor so the
+    //        cursor sits centred in the box (NSTextView has no built-in inset).
+    // iOS:   UITextView already has 8 pt top+bottom textContainerInset, so we
+    //        don't add extra padding — but we DO account for it in height math.
     #if os(macOS)
-    private let minHeight: CGFloat = 26
     private let vPadding: CGFloat = 4
-    private let lineHeight: CGFloat = 20
+    private let hInset:   CGFloat = 5   // NSTextView lineFragmentPadding default
+    private let fallback: CGFloat = 28  // 1-line fallback before geometry fires
     #else
-    private let minHeight: CGFloat = 38
     private let vPadding: CGFloat = 8
-    private let lineHeight: CGFloat = 22
+    private let hInset:   CGFloat = 5
+    private let fallback: CGFloat = 38
     #endif
-    private var maxHeight: CGFloat { CGFloat(maxLines) * lineHeight + vPadding * 2 }
 
     var body: some View {
         TextEditor(text: $text)
@@ -44,51 +37,69 @@ private struct GrowingTextEditor: View {
             .scrollContentBackground(.hidden)
             #if os(macOS)
             .padding(.vertical, vPadding)
-            #endif
-            .frame(height: editorHeight)
-            #if os(macOS)
             .onKeyPress(.return) {
                 if NSApp.currentEvent?.modifierFlags.contains(.shift) == true { return .ignored }
                 onReturnKey?()
                 return .handled
             }
             #endif
-            // Hidden Text in the background measures the true wrap height.
-            // fixedSize(vertical: true) lets it grow beyond the background's bounds
-            // so GeometryReader captures the actual required height.
-            .background(alignment: .topLeading) {
-                Text(text.isEmpty ? " " : text)
-                    .font(.body)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, vPadding)
-                    .background(
-                        GeometryReader { geo in
-                            Color.clear.preference(
-                                key: ComposeMeasuredHeightKey.self,
-                                value: geo.size.height
-                            )
+            .frame(height: editorHeight > 0 ? editorHeight : fallback)
+            // GeometryReader in background captures the real container width.
+            .background {
+                GeometryReader { geo in
+                    Color.clear
+                        .onAppear {
+                            containerWidth = geo.size.width
+                            updateHeight()
                         }
-                    )
-                    .hidden()
+                        .onChange(of: geo.size.width) { _, w in
+                            containerWidth = w
+                            updateHeight()
+                        }
+                }
             }
+            .onChange(of: text) { updateHeight() }
             .overlay(alignment: .topLeading) {
                 if text.isEmpty {
                     Text(placeholder)
                         .font(.body)
                         .foregroundStyle(.tertiary)
-                        .padding(.leading, 5)
+                        .padding(.leading, hInset)
                         .padding(.top, vPadding)
                         .allowsHitTesting(false)
                 }
             }
-            .onPreferenceChange(ComposeMeasuredHeightKey.self) { height in
-                let clamped = min(max(height, minHeight), maxHeight)
-                if abs(clamped - editorHeight) > 0.5 {
-                    editorHeight = clamped
-                }
-            }
+    }
+
+    /// Recompute editorHeight using NSAttributedString metrics so the result is
+    /// always synchronous with the text change (no layout-pass dependency).
+    private func updateHeight() {
+        guard containerWidth > 0 else { return }
+
+        let str = text.isEmpty ? " " : text
+        let w = max(containerWidth - hInset * 2, 1)
+
+        #if os(macOS)
+        let f = NSFont.preferredFont(forTextStyle: .body)
+        #else
+        let f = UIFont.preferredFont(forTextStyle: .body)
+        #endif
+        let attrs: [NSAttributedString.Key: Any] = [.font: f]
+        #if os(macOS)
+        let opts: NSString.DrawingOptions = [.usesLineFragmentOrigin, .usesFontLeading]
+        #else
+        let opts: NSStringDrawingOptions = [.usesLineFragmentOrigin]
+        #endif
+        let bounds = CGSize(width: w, height: 1_000_000)
+
+        let oneH  = ceil((" " as NSString).boundingRect(with: bounds, options: opts, attributes: attrs, context: nil).height)
+        let rawH  = ceil((str  as NSString).boundingRect(with: bounds, options: opts, attributes: attrs, context: nil).height)
+
+        let minH = oneH + vPadding * 2
+        let maxH = oneH * CGFloat(maxLines) + vPadding * 2
+        let newH = min(max(rawH + vPadding * 2, minH), maxH)
+
+        if abs(newH - editorHeight) > 0.5 { editorHeight = newH }
     }
 }
 

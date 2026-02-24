@@ -5,7 +5,6 @@ struct BeadsListView: View {
     @Binding var selectedId: String?
     let api: APIClient
     @Binding var sidebarMode: SidebarMode
-    var isTabContext: Bool = false
     @EnvironmentObject private var syncEngine: SyncEngine
 
     @State private var beads: [Bead] = []
@@ -23,17 +22,31 @@ struct BeadsListView: View {
 
     var body: some View {
         List(beads, selection: $selectedId) { bead in
-            if isTabContext {
-                NavigationLink(value: bead.id) {
+            #if os(iOS)
+            if UIDevice.current.userInterfaceIdiom == .phone {
+                NavigationLink(value: PhoneNav(dest: .bead, id: bead.id)) {
                     BeadRow(bead: bead)
                 }
             } else {
                 BeadRow(bead: bead)
                     .tag(bead.id)
             }
+            #else
+            BeadRow(bead: bead)
+                .tag(bead.id)
+            #endif
         }
+        #if os(macOS)
         .listStyle(.sidebar)
+        #else
+        .listStyle(.plain)
+        #endif
+        #if os(iOS)
+        .navigationTitle(UIDevice.current.userInterfaceIdiom == .phone ? "" : "Beads")
+        .navigationBarHidden(UIDevice.current.userInterfaceIdiom == .phone)
+        #else
         .navigationTitle("Beads")
+        #endif
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
@@ -54,31 +67,29 @@ struct BeadsListView: View {
                     }
                     .pickerStyle(.segmented)
 
-                    if !isTabContext {
-                        HStack(spacing: 4) {
-                            // Chats tab — inactive
-                            Button { sidebarMode = .chats } label: {
-                                Label("Chats", systemImage: "bubble.left.and.bubble.right")
-                                    .font(.caption.weight(.semibold))
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 6)
-                            }
-                            .buttonStyle(.plain)
-                            .foregroundStyle(.secondary)
-
-                            // Beads tab — active
-                            Button {} label: {
-                                Label("Beads", systemImage: "checkmark.circle.fill")
-                                    .font(.caption.weight(.semibold))
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 6)
-                                    .background(.tint.opacity(0.12), in: Capsule())
-                            }
-                            .buttonStyle(.plain)
-                            .foregroundStyle(.tint)
-
-                            Spacer()
+                    HStack(spacing: 4) {
+                        // Chats tab — inactive
+                        Button { sidebarMode = .chats } label: {
+                            Label("Chats", systemImage: "bubble.left.and.bubble.right")
+                                .font(.caption.weight(.semibold))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
                         }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
+
+                        // Beads tab — active
+                        Button {} label: {
+                            Label("Beads", systemImage: "checkmark.circle.fill")
+                                .font(.caption.weight(.semibold))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(.tint.opacity(0.12), in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.tint)
+
+                        Spacer()
                     }
                 }
                 .padding(.horizontal, 14)
