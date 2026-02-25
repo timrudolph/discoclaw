@@ -1,4 +1,7 @@
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+import sharp from 'sharp';
 import type { FastifyInstance } from 'fastify';
 import type { RuntimeAdapter } from '../runtime/types.js';
 import type { Db, ConversationRow, MessageRow, MemoryItemRow } from './db.js';
@@ -102,6 +105,19 @@ export function registerMessageRoutes(
       return;
     }
 
+    // Handle !avatar command — generates SVG via Claude Haiku, converts to JPEG
+    const avatarAssistantId = handleAvatarCommand(db, hub, config, conv, trimmed);
+    if (avatarAssistantId !== null) {
+      reply.status(201).send({
+        id: userMsgId,
+        seq: userSeq,
+        clientId: clientId ?? null,
+        status: 'complete',
+        assistantMessageId: avatarAssistantId,
+      });
+      return;
+    }
+
     // Kick off Claude invocation (non-blocking)
     const assistantId = await invokeRuntime({
       db, hub, runtime, config,
@@ -170,6 +186,137 @@ function handleMemoryCommand(db: Db, userId: string, conversationId: string, con
     '- `!memory forget <substring>` — remove matching items',
     '- `!memory show` — list all items',
   ].join('\n');
+}
+
+// ─── Avatar command handler ───────────────────────────────────────────────────
+
+function generateAvatarInBackground(
+  db: Db,
+  hub: WsHub,
+  config: ServerConfig,
+  conv: ConversationRow,
+  assistantId: string,
+  assistantSeq: number,
+  extraPrompt: string,
+): void {
+  void (async () => {
+    try {
+      const workspacePath = conv.workspace_path ?? config.workspaceCwd;
+      let identity = '';
+      try {
+        const raw = await fs.promises.readFile(path.join(workspacePath, 'IDENTITY.md'), 'utf8');
+        identity = raw.trim();
+      } catch { /* no identity — generate generic avatar */ }
+
+      const characterDesc = identity
+        ? `Character description from IDENTITY.md:\n\n${identity}`
+        : 'A friendly AI assistant.';
+
+      const userPrompt = [
+        'Generate a square SVG avatar (viewBox="0 0 512 512") for an AI assistant character.',
+        characterDesc,
+        extraPrompt ? `Additional notes: ${extraPrompt}` : '',
+        'Requirements:',
+        '- Output ONLY the SVG code. Start with <svg and end with </svg>. No markdown, no explanation.',
+        '- Use vibrant colors and simple bold shapes suitable for a profile picture.',
+        '- No external images or fonts. No text or labels.',
+        '- Keep it simple — flat or lightly shaded illustration style.',
+      ].filter(Boolean).join('\n');
+
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'x-api-key': config.anthropicApiKey!,
+          'anthropic-version': '2023-06-01',
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 4096,
+          messages: [{ role: 'user', content: userPrompt }],
+        }),
+      });
+
+      if (!response.ok) throw new Error(`Anthropic API error: ${response.status}`);
+      const data = await response.json() as { content: Array<{ type: string; text: string }> };
+      const text = data.content.find((b) => b.type === 'text')?.text ?? '';
+
+      const svgMatch = text.match(/<svg[\s\S]*<\/svg>/i);
+      if (!svgMatch) throw new Error('No SVG found in Claude response');
+      const svg = svgMatch[0];
+
+      const jpeg = await sharp(Buffer.from(svg))
+        .resize(512, 512)
+        .jpeg({ quality: 90 })
+        .toBuffer();
+
+      await fs.promises.writeFile(path.join(config.avatarsDir, `conv-${conv.id}.jpg`), jpeg);
+
+      const completedAt = Date.now();
+      db.prepare("UPDATE messages SET status = 'complete', content = ?, completed_at = ? WHERE id = ?")
+        .run('Avatar generated ✓', completedAt, assistantId);
+
+      hub.broadcast(conv.user_id, {
+        type: 'message.complete',
+        messageId: assistantId,
+        conversationId: conv.id,
+        content: 'Avatar generated ✓',
+        seq: assistantSeq,
+      });
+      hub.broadcast(conv.user_id, {
+        type: 'conversation.updated',
+        conversationId: conv.id,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      db.prepare("UPDATE messages SET status = 'error', error = ? WHERE id = ?").run(msg, assistantId);
+      hub.broadcast(conv.user_id, {
+        type: 'message.error',
+        messageId: assistantId,
+        conversationId: conv.id,
+        error: msg,
+      });
+    }
+  })();
+}
+
+/**
+ * Handles `!avatar` command. Inserts a pending assistant message, fires
+ * SVG generation in the background, and returns the assistant message ID
+ * (signals "handled"). Returns null if this is not an `!avatar` command.
+ * Returns an error message string when ANTHROPIC_API_KEY is missing.
+ */
+function handleAvatarCommand(
+  db: Db,
+  hub: WsHub,
+  config: ServerConfig,
+  conv: ConversationRow,
+  content: string,
+): string | null {
+  if (!content.startsWith('!avatar')) return null;
+
+  if (!config.anthropicApiKey) {
+    const { id } = insertAssistantMessage(
+      db,
+      conv.id,
+      'Avatar generation requires `ANTHROPIC_API_KEY` to be configured on the server.',
+    );
+    return id;
+  }
+
+  const extraPrompt = content.slice('!avatar'.length).trim();
+  const assistantId = crypto.randomUUID();
+  const assistantSeq = nextSeq();
+  const now = Date.now();
+
+  db.prepare(`
+    INSERT INTO messages (id, conversation_id, role, content, status, seq, created_at)
+    VALUES (?, ?, 'assistant', 'Generating avatar…', 'pending', ?, ?)
+  `).run(assistantId, conv.id, assistantSeq, now);
+
+  generateAvatarInBackground(db, hub, config, conv, assistantId, assistantSeq, extraPrompt);
+
+  return assistantId;
 }
 
 function insertAssistantMessage(db: Db, conversationId: string, content: string): { id: string; seq: number } {

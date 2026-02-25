@@ -40,6 +40,9 @@ export type ServerConfig = {
   // Feature flags
   beadsEnabled: boolean;
 
+  // Anthropic API key (used for !avatar command)
+  anthropicApiKey: string | null;
+
   // Avatar storage directory
   avatarsDir: string;
 
@@ -115,6 +118,7 @@ export function parseServerConfig(env: NodeJS.ProcessEnv): ServerConfig {
     appfiguresClientKey: env.APPFIGURES_CLIENT_KEY?.trim() || null,
     appfiguresContextPath: str(env, 'SERVER_APPFIGURES_CONTEXT', defaultAppfiguresContextPath),
     beadsEnabled: bool(env, 'SERVER_BEADS_ENABLED', true),
+    anthropicApiKey: env.ANTHROPIC_API_KEY?.trim() || null,
     avatarsDir: str(env, 'SERVER_AVATARS_DIR', defaultAvatarsDir),
     workspacesBaseDir: str(env, 'SERVER_WORKSPACES_DIR', defaultWorkspacesBaseDir),
   };
