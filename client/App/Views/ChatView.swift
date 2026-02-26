@@ -8,6 +8,7 @@ struct ChatView: View {
     let conversation: Conversation?
     private let conversationId: String
     private let api: APIClient
+    private let conversationRepo: ConversationRepository
 
     @State private var draftText: String
     @State private var atBottom = true
@@ -32,10 +33,11 @@ struct ChatView: View {
     }
 
 
-    init(conversationId: String, conversation: Conversation?, messageRepo: MessageRepository, api: APIClient) {
+    init(conversationId: String, conversation: Conversation?, messageRepo: MessageRepository, api: APIClient, conversationRepo: ConversationRepository) {
         self.conversationId = conversationId
         self.conversation = conversation
         self.api = api
+        self.conversationRepo = conversationRepo
         _viewModel = StateObject(
             wrappedValue: ChatViewModel(conversationId: conversationId, repo: messageRepo, api: api)
         )
@@ -118,6 +120,12 @@ struct ChatView: View {
         }
         .task(id: conversationId) {
             await loadAvatars()
+        }
+        .task(id: syncEngine.avatarRefreshToken) {
+            guard syncEngine.avatarRefreshToken > 0 else { return }
+            if let data = try? await api.fetchAssistantAvatar(conversationId: conversationId) {
+                assistantImage = imageFromData(data)
+            }
         }
         .onAppear { composeFocused = true }
         .onChange(of: conversationId) { composeFocused = true }
@@ -211,20 +219,29 @@ struct ChatView: View {
                             .padding(.vertical, 8)
                         }
 
-                        ForEach(Array(viewModel.messages.enumerated()), id: \.element.id) { index, message in
-                            let prevDate = index > 0 ? viewModel.messages[index - 1].createdAt : nil
+                        let messages = viewModel.messages
+                        ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
+                            let prevDate = index > 0 ? messages[index - 1].createdAt : nil
                             if prevDate == nil || !Calendar.current.isDate(message.createdAt, inSameDayAs: prevDate!) {
                                 DateSeparatorView(date: message.createdAt)
                                     .padding(.horizontal)
                             }
+                            // For cross-conv messages, resolve the source bot's identity.
+                            let sourceConv: Conversation? = message.sourceConversationId
+                                .flatMap { conversationRepo.fetchSync(id: $0) }
+                            let bubbleAuthorName: String? = message.role == .user
+                                ? (userName.isEmpty ? nil : userName)
+                                : (sourceConv?.assistantName ?? assistantName)
+                            let bubbleImage: Image? = message.role == .user ? userImage : assistantImage
+                            let bubbleAccent: Color? = message.role == .user
+                                ? nil
+                                : (sourceConv?.accentSwiftUIColor ?? conversation?.accentSwiftUIColor)
                             MessageBubbleView(
                                 message: message,
                                 toolLabel: syncEngine.activeTools[message.id],
-                                authorName: message.role == .user
-                                    ? (userName.isEmpty ? nil : userName)
-                                    : assistantName,
-                                authorImage: message.role == .user ? userImage : assistantImage,
-                                accentColor: message.role == .user ? nil : conversation?.accentSwiftUIColor,
+                                authorName: bubbleAuthorName,
+                                authorImage: bubbleImage,
+                                accentColor: bubbleAccent,
                                 onRetry: (message.role == .user && message.status == .error)
                                     ? { Task { await viewModel.retry(message: message) } }
                                     : nil,

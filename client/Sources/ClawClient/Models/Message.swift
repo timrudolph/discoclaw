@@ -12,6 +12,8 @@ public struct Message: Codable, Identifiable, Equatable, Sendable {
     public var seq: Int
     public var createdAt: Date
     public var completedAt: Date?
+    /// Set when this message was cross-posted from another bot's conversation.
+    public var sourceConversationId: String?
 
     public enum Role: String, Codable, Sendable {
         case user, assistant
@@ -31,7 +33,8 @@ public struct Message: Codable, Identifiable, Equatable, Sendable {
         error: String? = nil,
         seq: Int,
         createdAt: Date,
-        completedAt: Date? = nil
+        completedAt: Date? = nil,
+        sourceConversationId: String? = nil
     ) {
         self.id = id
         self.clientId = clientId
@@ -43,6 +46,7 @@ public struct Message: Codable, Identifiable, Equatable, Sendable {
         self.seq = seq
         self.createdAt = createdAt
         self.completedAt = completedAt
+        self.sourceConversationId = sourceConversationId
     }
 }
 
@@ -60,6 +64,7 @@ extension Message: FetchableRecord, PersistableRecord {
         public static let seq = Column(CodingKeys.seq)
         public static let createdAt = Column(CodingKeys.createdAt)
         public static let completedAt = Column(CodingKeys.completedAt)
+        public static let sourceConversationId = Column(CodingKeys.sourceConversationId)
     }
 
     public static let conversation = belongsTo(Conversation.self)

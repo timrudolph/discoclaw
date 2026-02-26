@@ -105,6 +105,19 @@ export function registerMessageRoutes(
       return;
     }
 
+    // Handle @BotName cross-conv mentions
+    const mentionAssistantId = await handleMentionCommand(db, hub, runtime, config, conv, trimmed);
+    if (mentionAssistantId !== null) {
+      reply.status(201).send({
+        id: userMsgId,
+        seq: userSeq,
+        clientId: clientId ?? null,
+        status: 'complete',
+        assistantMessageId: mentionAssistantId,
+      });
+      return;
+    }
+
     // Handle !avatar command — generates SVG via Claude Haiku, converts to JPEG
     const avatarAssistantId = handleAvatarCommand(db, hub, config, conv, trimmed);
     if (avatarAssistantId !== null) {
@@ -188,6 +201,103 @@ function handleMemoryCommand(db: Db, userId: string, conversationId: string, con
   ].join('\n');
 }
 
+// ─── Cross-conv @mention handler ─────────────────────────────────────────────
+
+function findOrCreateShadow(
+  db: Db,
+  botConv: ConversationRow,
+  originConv: ConversationRow,
+): ConversationRow {
+  const existing = db
+    .prepare('SELECT * FROM conversations WHERE shadow_for = ? AND shadow_origin = ?')
+    .get(botConv.id, originConv.id) as ConversationRow | undefined;
+  if (existing) return existing;
+
+  const shadowId = crypto.randomUUID();
+  const now = Date.now();
+  db.prepare(`
+    INSERT INTO conversations
+      (id, user_id, title, assistant_name, accent_color, model_override, workspace_path,
+       context_modules, kind, shadow_for, shadow_origin, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'shadow', ?, ?, ?, ?)
+  `).run(
+    shadowId, botConv.user_id,
+    `${botConv.assistant_name ?? 'Bot'} (cross-chat)`,
+    botConv.assistant_name, botConv.accent_color, botConv.model_override,
+    botConv.workspace_path, botConv.context_modules,
+    botConv.id, originConv.id, now, now,
+  );
+  return db.prepare('SELECT * FROM conversations WHERE id = ?').get(shadowId) as ConversationRow;
+}
+
+/**
+ * Handles `@BotName message` cross-conversation mentions.
+ * Resolves the bot by assistantName, finds/creates a shadow conversation,
+ * invokes the bot's runtime using shadow context, and routes the response
+ * back into the originating conversation. Returns the assistant message ID,
+ * or null if no matching bot was found (message passes through to Claude).
+ */
+async function handleMentionCommand(
+  db: Db,
+  hub: WsHub,
+  runtime: RuntimeAdapter,
+  config: ServerConfig,
+  originConv: ConversationRow,
+  content: string,
+): Promise<string | null> {
+  const match = content.match(/^@(\S+)\s*([\s\S]*)/);
+  if (!match) return null;
+
+  const [, mentionName, restContent] = match;
+
+  const botConv = db
+    .prepare("SELECT * FROM conversations WHERE user_id = ? AND LOWER(assistant_name) = LOWER(?)")
+    .get(originConv.user_id, mentionName) as ConversationRow | undefined;
+
+  // No matching bot — let the message pass through to the current conversation's Claude.
+  if (!botConv) return null;
+
+  // Prevent self-mentions and mentioning the current conversation.
+  if (botConv.id === originConv.id) return null;
+
+  const shadowConv = findOrCreateShadow(db, botConv, originConv);
+  const messageContent = restContent.trim() || mentionName;
+
+  const assistantId = crypto.randomUUID();
+  const assistantSeq = nextSeq();
+  const now = Date.now();
+
+  // Pre-create the pending assistant message in the origin conv, attributed to the bot.
+  db.prepare(`
+    INSERT INTO messages (id, conversation_id, role, content, status, seq, created_at, source_conversation_id)
+    VALUES (?, ?, 'assistant', '', 'pending', ?, ?, ?)
+  `).run(assistantId, originConv.id, assistantSeq, now, botConv.id);
+
+  // Also save the user message in the shadow conv (with attribution) so the bot
+  // has context for this cross-conv thread.
+  const shadowUserSeq = nextSeq();
+  db.prepare(`
+    INSERT INTO messages (id, conversation_id, role, content, status, seq, created_at, completed_at)
+    VALUES (?, ?, 'user', ?, 'complete', ?, ?, ?)
+  `).run(
+    crypto.randomUUID(), shadowConv.id,
+    `[Cross-chat from "${originConv.title ?? 'another conversation'}"]: ${messageContent}`,
+    shadowUserSeq, now, now,
+  );
+
+  // Invoke the bot's runtime via the shadow conv context, routing output to origin conv.
+  void invokeRuntime({
+    db, hub, runtime, config,
+    conversation: shadowConv,
+    userMessageContent: messageContent,
+    responseConversationId: originConv.id,
+    responseAssistantMessageId: assistantId,
+    responseAssistantSeq: assistantSeq,
+  });
+
+  return assistantId;
+}
+
 // ─── Avatar command handler ───────────────────────────────────────────────────
 
 function generateAvatarInBackground(
@@ -201,56 +311,51 @@ function generateAvatarInBackground(
 ): void {
   void (async () => {
     try {
+      if (!config.geminiApiKey) throw new Error('GEMINI_API_KEY is not configured');
+
       const workspacePath = conv.workspace_path ?? config.workspaceCwd;
       let identity = '';
       try {
         const raw = await fs.promises.readFile(path.join(workspacePath, 'IDENTITY.md'), 'utf8');
         identity = raw.trim();
-      } catch { /* no identity — generate generic avatar */ }
+      } catch { /* no IDENTITY.md */ }
 
-      const characterDesc = identity
-        ? `Character description from IDENTITY.md:\n\n${identity}`
-        : 'A friendly AI assistant.';
+      const promptParts = [
+        'Pixar-style animated character portrait.',
+        identity ? `Character description:\n${identity}` : 'A friendly AI assistant.',
+        extraPrompt ? `Additional details: ${extraPrompt}` : '',
+        'Subsurface scattering skin glow, expressive oversized eyes, smooth volumetric lighting, warm and likeable. No text or labels. Square crop, face fills the frame.',
+      ].filter(Boolean);
 
-      const userPrompt = [
-        'Generate a square SVG avatar (viewBox="0 0 512 512") for an AI assistant character.',
-        characterDesc,
-        extraPrompt ? `Additional notes: ${extraPrompt}` : '',
-        'Requirements:',
-        '- Output ONLY the SVG code. Start with <svg and end with </svg>. No markdown, no explanation.',
-        '- Use vibrant colors and simple bold shapes suitable for a profile picture.',
-        '- No external images or fonts. No text or labels.',
-        '- Keep it simple — flat or lightly shaded illustration style.',
-      ].filter(Boolean).join('\n');
-
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'x-api-key': config.anthropicApiKey!,
-          'anthropic-version': '2023-06-01',
-          'content-type': 'application/json',
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${config.geminiApiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: promptParts.join(' ') }] }],
+            generationConfig: { responseModalities: ['IMAGE'] },
+          }),
         },
-        body: JSON.stringify({
-          model: 'claude-haiku-4-5-20251001',
-          max_tokens: 4096,
-          messages: [{ role: 'user', content: userPrompt }],
-        }),
-      });
+      );
 
-      if (!response.ok) throw new Error(`Anthropic API error: ${response.status}`);
-      const data = await response.json() as { content: Array<{ type: string; text: string }> };
-      const text = data.content.find((b) => b.type === 'text')?.text ?? '';
+      if (!response.ok) {
+        const err = await response.text();
+        throw new Error(`Gemini API error ${response.status}: ${err}`);
+      }
 
-      const svgMatch = text.match(/<svg[\s\S]*<\/svg>/i);
-      if (!svgMatch) throw new Error('No SVG found in Claude response');
-      const svg = svgMatch[0];
+      type GeminiPart = { text?: string; inlineData?: { mimeType: string; data: string } };
+      type GeminiResponse = { candidates: Array<{ content: { parts: GeminiPart[] } }> };
+      const data = await response.json() as GeminiResponse;
+      const imagePart = data.candidates[0]?.content.parts.find((p) => p.inlineData);
+      if (!imagePart?.inlineData) throw new Error('No image in Gemini response');
 
-      const jpeg = await sharp(Buffer.from(svg))
+      const png = await sharp(Buffer.from(imagePart.inlineData.data, 'base64'))
         .resize(512, 512)
-        .jpeg({ quality: 90 })
+        .png()
         .toBuffer();
 
-      await fs.promises.writeFile(path.join(config.avatarsDir, `conv-${conv.id}.jpg`), jpeg);
+      await fs.promises.writeFile(path.join(config.avatarsDir, `conv-${conv.id}.png`), png);
 
       const completedAt = Date.now();
       db.prepare("UPDATE messages SET status = 'complete', content = ?, completed_at = ? WHERE id = ?")
@@ -282,9 +387,8 @@ function generateAvatarInBackground(
 
 /**
  * Handles `!avatar` command. Inserts a pending assistant message, fires
- * SVG generation in the background, and returns the assistant message ID
- * (signals "handled"). Returns null if this is not an `!avatar` command.
- * Returns an error message string when ANTHROPIC_API_KEY is missing.
+ * Gemini image generation in the background, and returns the assistant
+ * message ID (signals "handled"). Returns null if not an `!avatar` command.
  */
 function handleAvatarCommand(
   db: Db,
@@ -294,15 +398,6 @@ function handleAvatarCommand(
   content: string,
 ): string | null {
   if (!content.startsWith('!avatar')) return null;
-
-  if (!config.anthropicApiKey) {
-    const { id } = insertAssistantMessage(
-      db,
-      conv.id,
-      'Avatar generation requires `ANTHROPIC_API_KEY` to be configured on the server.',
-    );
-    return id;
-  }
 
   const extraPrompt = content.slice('!avatar'.length).trim();
   const assistantId = crypto.randomUUID();

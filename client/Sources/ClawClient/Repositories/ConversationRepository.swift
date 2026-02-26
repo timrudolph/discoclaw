@@ -27,6 +27,13 @@ public final class ConversationRepository {
         }
     }
 
+    /// Synchronous fetch for use during view rendering (e.g. message attribution lookups).
+    public func fetchSync(id: String) -> Conversation? {
+        try? db.writer.read { db in
+            try Conversation.fetchOne(db, key: id)
+        }
+    }
+
     public func firstProtected() async throws -> Conversation? {
         try await db.read { db in
             try Conversation
@@ -91,10 +98,13 @@ public final class ConversationRepository {
     }
 
     /// Emits the full sorted list whenever any conversation changes.
+    /// Shadow conversations (kind = "shadow") are always excluded from this list.
     public func observeAll(includeArchived: Bool = false) -> AnyPublisher<[Conversation], Error> {
         ValueObservation
             .tracking { db -> [Conversation] in
-                var request = Conversation.order(Conversation.Columns.updatedAt.desc)
+                var request = Conversation
+                    .filter(Column("kind") != "shadow" || Column("kind") == nil)
+                    .order(Conversation.Columns.updatedAt.desc)
                 if !includeArchived {
                     request = request.filter(Conversation.Columns.archivedAt == nil)
                 }

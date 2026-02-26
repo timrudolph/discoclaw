@@ -53,6 +53,18 @@ function toolLabel(name: string): string {
   return TOOL_LABELS[name] ?? `Using ${name}…`;
 }
 
+/**
+ * Extract a display name from IDENTITY.md content.
+ * Matches "Your name is X" (case-insensitive) or a first "# Heading".
+ */
+function parseName(content: string): string | null {
+  const nameMatch = content.match(/your name is ([A-Za-z][A-Za-z0-9_'-]*)/i);
+  if (nameMatch) return nameMatch[1];
+  const boldNameMatch = content.match(/\*\*Name:\*\*\s*([A-Za-z][A-Za-z0-9_'-]*)/i);
+  if (boldNameMatch) return boldNameMatch[1];
+  return null;
+}
+
 // Cache the appfigures context file content after first load.
 // undefined = not yet attempted; null = file not found or tokens not set.
 let _appfiguresContext: string | null | undefined;
@@ -106,6 +118,7 @@ function buildPrompt(
   appfiguresContext: string | null,
   contextModulesContent: string,
   workspaceMemory: string | null,
+  assistantName: string | null,
 ): string {
   const MAX_HISTORY = 20;
   const recent = history.slice(-MAX_HISTORY);
@@ -140,7 +153,7 @@ function buildPrompt(
 
   const lines = recent
     .filter((m) => m.status === 'complete' && m.content.trim())
-    .map((m) => `[${m.role === 'user' ? 'User' : 'Assistant'}]: ${m.content.trim()}`)
+    .map((m) => `[${m.role === 'user' ? 'User' : (assistantName ?? 'Assistant')}]: ${m.content.trim()}`)
     .join('\n\n');
 
   const historyBlock = lines ? `Recent conversation:\n\n${lines}\n\n---\n\n` : '';
@@ -154,6 +167,10 @@ export type InvokeOptions = {
   config: ServerConfig;
   conversation: ConversationRow;
   userMessageContent: string;
+  // Cross-conv routing: when set, stream into origin conv instead of conversation.id
+  responseConversationId?: string;
+  responseAssistantMessageId?: string;
+  responseAssistantSeq?: number;
 };
 
 /**
@@ -200,23 +217,65 @@ export async function invokeRuntime(opts: InvokeOptions): Promise<string> {
   }
 
   // Determine CWD for this invocation.
-  // If the conversation workspace has custom identity files (non-empty SOUL/IDENTITY/USER),
-  // use it as CWD and add the global workspace via --add-dir for shared tools/context.
-  // Otherwise fall back to the global workspace as CWD so Claude naturally picks up the
-  // global identity — no snapshotting, always live.
   const conversationWorkspace = conversation.workspace_path ?? config.workspaceCwd;
-  const useConvWorkspace = conversationWorkspace !== config.workspaceCwd
-    && await hasCustomIdentity(conversationWorkspace);
-  const cwd = useConvWorkspace ? conversationWorkspace : config.workspaceCwd;
-  const addDirs = useConvWorkspace ? [config.workspaceCwd] : undefined;
+
+  let cwd: string;
+  let addDirs: string[] | undefined;
+  let appendSystemPrompt: string | undefined;
+
+  if (conversation.cwd_override) {
+    // Project dir is primary CWD. .claw/ is a subdir so Claude can access it directly.
+    // Global workspace added via --add-dir for shared tools/fallback identity.
+    cwd = conversation.cwd_override;
+    addDirs = [config.workspaceCwd];
+
+    // Identity can't be read via CLAUDE.md inheritance (project is outside the workspace tree),
+    // so inject it into the system prompt instead.
+    const identityParts: string[] = [];
+    for (const name of ['SOUL.md', 'IDENTITY.md', 'USER.md']) {
+      const content = await readWorkspaceFile(conversationWorkspace, name)
+                   ?? await readWorkspaceFile(config.workspaceCwd, name);
+      if (content) identityParts.push(`# ${name}\n\n${content}`);
+    }
+    // Tell Claude where its notes file lives so reads/writes go to .claw/ not the project root.
+    identityParts.push(
+      'Your per-conversation notes file is `.claw/MEMORY.md`. ' +
+      'Read it at the start of each session if it exists; ' +
+      'write to it when you learn something worth remembering across sessions.',
+    );
+    appendSystemPrompt = identityParts.join('\n\n---\n\n');
+  } else {
+    const useConvWorkspace = conversationWorkspace !== config.workspaceCwd
+      && await hasCustomIdentity(conversationWorkspace);
+    cwd = useConvWorkspace ? conversationWorkspace : config.workspaceCwd;
+    addDirs = useConvWorkspace ? [config.workspaceCwd] : undefined;
+  }
 
   // Read MEMORY.md from the conversation workspace (injected into the prompt as text).
   const wsMemory = await readWorkspaceFile(conversationWorkspace, 'MEMORY.md');
 
-  const prompt = buildPrompt(history, opts.userMessageContent, conversation.kind, memoryItems, conversationMemoryItems, appfiguresContext, contextModulesContent, wsMemory);
+  // Extract assistant name from IDENTITY.md (conversation workspace, falling back to global).
+  const identityMd = await readWorkspaceFile(conversationWorkspace, 'IDENTITY.md')
+                  ?? await readWorkspaceFile(config.workspaceCwd, 'IDENTITY.md');
+  const extractedName = identityMd ? parseName(identityMd) : null;
 
-  const assistantId = crypto.randomUUID();
-  const assistantSeq = nextSeq();
+  if (extractedName && extractedName !== conversation.assistant_name) {
+    db.prepare('UPDATE conversations SET assistant_name = ? WHERE id = ?')
+      .run(extractedName, conversation.id);
+    hub.broadcast(conversation.user_id, {
+      type: 'conversation.updated',
+      conversationId: conversation.id,
+    });
+  }
+
+  const assistantName = extractedName ?? conversation.assistant_name ?? null;
+
+  const prompt = buildPrompt(history, opts.userMessageContent, conversation.kind, memoryItems, conversationMemoryItems, appfiguresContext, contextModulesContent, wsMemory, assistantName);
+
+  // For cross-conv mentions the pending message is pre-created in the origin conv.
+  // Otherwise create it here as normal.
+  const assistantId = opts.responseAssistantMessageId ?? crypto.randomUUID();
+  const assistantSeq = opts.responseAssistantSeq ?? nextSeq();
   const now = Date.now();
 
   // Reuse the conversation's Claude session ID for continuity across turns.
@@ -227,17 +286,20 @@ export async function invokeRuntime(opts: InvokeOptions): Promise<string> {
       .run(sessionId, conversation.id);
   }
 
-  // Create the assistant message row immediately (status=pending)
-  db.prepare(`
-    INSERT INTO messages (id, conversation_id, role, content, status, seq, created_at)
-    VALUES (?, ?, 'assistant', '', 'pending', ?, ?)
-  `).run(assistantId, conversation.id, assistantSeq, now);
+  if (!opts.responseAssistantMessageId) {
+    // Normal (non-cross-conv) path: create the pending assistant message row now.
+    db.prepare(`
+      INSERT INTO messages (id, conversation_id, role, content, status, seq, created_at)
+      VALUES (?, ?, 'assistant', '', 'pending', ?, ?)
+    `).run(assistantId, conversation.id, assistantSeq, now);
+  }
 
   // Fire-and-forget: stream in background so the POST /messages response is instant
   streamInBackground({
     db, hub, runtime, config, conversation,
     assistantId, assistantSeq, prompt, sessionId,
-    cwd: conversationWorkspace, addDirs,
+    cwd, addDirs, appendSystemPrompt,
+    responseConversationId: opts.responseConversationId,
   });
 
   return assistantId;
@@ -256,6 +318,8 @@ type StreamParams = {
   cwd: string;
   addDirs: string[] | undefined;
   appendSystemPrompt?: string;
+  // Cross-conv routing: stream into this conversation instead of conversation.id
+  responseConversationId?: string;
 };
 
 /** Returns true if the error is a Claude CLI session-ID conflict. */
@@ -275,6 +339,8 @@ function streamInBackground(params: StreamParams): void {
 async function doStream(params: StreamParams, isRetry: boolean): Promise<void> {
   const { db, hub, runtime, config, conversation, assistantId, assistantSeq, prompt, sessionId, cwd, addDirs, appendSystemPrompt } = params;
   const userId = conversation.user_id;
+  // For cross-conv mentions, all broadcasts and message writes target the origin conversation.
+  const targetConvId = params.responseConversationId ?? conversation.id;
   let fullContent = '';
   // The runtime always emits done after error as a cleanup signal.
   // Track this so the done handler doesn't overwrite the error state.
@@ -307,7 +373,7 @@ async function doStream(params: StreamParams, isRetry: boolean): Promise<void> {
           hub.broadcast(userId, {
             type: 'message.delta',
             messageId: assistantId,
-            conversationId: conversation.id,
+            conversationId: targetConvId,
             delta: event.text,
             seq: assistantSeq,
           });
@@ -341,14 +407,26 @@ async function doStream(params: StreamParams, isRetry: boolean): Promise<void> {
           `).run(completedAt, assistantId);
           db.prepare(
             'UPDATE conversations SET updated_at = ? WHERE id = ?',
-          ).run(completedAt, conversation.id);
+          ).run(completedAt, targetConvId);
           hub.broadcast(userId, {
             type: 'message.complete',
             messageId: assistantId,
-            conversationId: conversation.id,
+            conversationId: targetConvId,
             content: fullContent,
             seq: assistantSeq,
           });
+
+          // Cross-conv: mirror the final response into the shadow conv so the
+          // bot retains memory of what it said across future @mentions.
+          if (params.responseConversationId) {
+            const mirrorSeq = nextSeq();
+            db.prepare(`
+              INSERT INTO messages (id, conversation_id, role, content, status, seq, created_at, completed_at)
+              VALUES (?, ?, 'assistant', ?, 'complete', ?, ?, ?)
+            `).run(crypto.randomUUID(), conversation.id, fullContent, mirrorSeq, completedAt, completedAt);
+            db.prepare('UPDATE conversations SET updated_at = ? WHERE id = ?')
+              .run(completedAt, conversation.id);
+          }
           break;
         }
 
@@ -380,7 +458,7 @@ async function doStream(params: StreamParams, isRetry: boolean): Promise<void> {
           hub.broadcast(userId, {
             type: 'message.error',
             messageId: assistantId,
-            conversationId: conversation.id,
+            conversationId: targetConvId,
             error: storedError,
           });
           break;
@@ -395,7 +473,7 @@ async function doStream(params: StreamParams, isRetry: boolean): Promise<void> {
     hub.broadcast(userId, {
       type: 'message.error',
       messageId: assistantId,
-      conversationId: conversation.id,
+      conversationId: targetConvId,
       error: msg,
     });
   }

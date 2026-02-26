@@ -84,7 +84,13 @@ public struct ConversationDetail: Decodable {
 
 public struct CreateConversationRequest: Encodable {
     public let title: String?
-    public init(title: String?) { self.title = title }
+    public let modelOverride: String?
+    public let cwdOverride: String?
+    public init(title: String?, modelOverride: String? = nil, cwdOverride: String? = nil) {
+        self.title = title
+        self.modelOverride = modelOverride
+        self.cwdOverride = cwdOverride
+    }
 }
 
 public struct UpdateConversationRequest: Encodable {
@@ -121,6 +127,7 @@ public struct MessageDTO: Decodable {
     public let seq: Int
     public let createdAt: Int
     public let completedAt: Int?
+    public let sourceConversationId: String?
 
     public func toMessage() -> Message {
         Message(
@@ -133,7 +140,8 @@ public struct MessageDTO: Decodable {
             error: error,
             seq: seq,
             createdAt: Date(timeIntervalSince1970: Double(createdAt) / 1000),
-            completedAt: completedAt.map { Date(timeIntervalSince1970: Double($0) / 1000) }
+            completedAt: completedAt.map { Date(timeIntervalSince1970: Double($0) / 1000) },
+            sourceConversationId: sourceConversationId
         )
     }
 }

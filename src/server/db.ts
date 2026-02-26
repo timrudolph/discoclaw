@@ -54,7 +54,10 @@ export type ConversationRow = {
   model_override: string | null;    // Claude model alias override, e.g. "sonnet", "haiku"
   assistant_name: string | null;    // Display name for the assistant in this conversation
   accent_color: string | null;      // Hex accent color, e.g. "#A08060"
-  workspace_path: string | null;    // Per-conversation workspace directory
+  workspace_path: string | null;    // Per-conversation workspace directory (identity files)
+  cwd_override: string | null;      // Explicit CWD for Claude; null = auto (global workspace)
+  shadow_for: string | null;        // If set: this is a shadow conv for the bot conv with this ID
+  shadow_origin: string | null;     // If set: the originating conv that spawned this shadow
 };
 
 export type MessageRow = {
@@ -68,6 +71,7 @@ export type MessageRow = {
   seq: number;
   created_at: number;
   completed_at: number | null;
+  source_conversation_id: string | null;  // If set: cross-posted from this bot's conversation
 };
 
 export type CronJobRow = {
@@ -122,6 +126,12 @@ function migrate(db: Db): void {
 
   const migrations: [number, () => void][] = [
     [0, () => v0(db)],
+    [1, () => db.exec(`ALTER TABLE conversations ADD COLUMN cwd_override TEXT`)],
+    [2, () => db.exec(`
+      ALTER TABLE conversations ADD COLUMN shadow_for TEXT REFERENCES conversations(id);
+      ALTER TABLE conversations ADD COLUMN shadow_origin TEXT REFERENCES conversations(id);
+    `)],
+    [3, () => db.exec(`ALTER TABLE messages ADD COLUMN source_conversation_id TEXT REFERENCES conversations(id)`)],
   ];
 
   for (const [version, run] of migrations) {
@@ -165,7 +175,8 @@ function v0(db: Db): void {
       model_override    TEXT,
       assistant_name    TEXT,
       accent_color      TEXT,
-      workspace_path    TEXT
+      workspace_path    TEXT,
+      cwd_override      TEXT
     );
 
     CREATE TABLE messages (

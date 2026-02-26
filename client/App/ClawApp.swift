@@ -137,7 +137,8 @@ struct AppRootView: View {
                         conversationId: id,
                         conversation: selectedConversation,
                         messageRepo: container.messageRepo,
-                        api: container.api
+                        api: container.api,
+                        conversationRepo: container.conversationRepo
                     )
                     .id(id)
                 } else {
@@ -169,8 +170,8 @@ struct AppRootView: View {
             NewConversationView(
                 api: container.api,
                 onCreate: { id in selectedConversationId = id },
-                create: { title, modules, memory in
-                    await makeConversation(container: container, title: title, modules: modules, memory: memory)
+                create: { title, modules, memory, modelOverride, cwdOverride in
+                    await makeConversation(container: container, title: title, modules: modules, memory: memory, modelOverride: modelOverride, cwdOverride: cwdOverride)
                 }
             )
         }
@@ -246,7 +247,8 @@ struct AppRootView: View {
                         conversationId: nav.id,
                         conversation: nav.id == selectedConversationId ? selectedConversation : nil,
                         messageRepo: container.messageRepo,
-                        api: container.api
+                        api: container.api,
+                        conversationRepo: container.conversationRepo
                     )
                 case .bead:
                     if beadsEnabled {
@@ -261,8 +263,8 @@ struct AppRootView: View {
             NewConversationView(
                 api: container.api,
                 onCreate: { id in selectedConversationId = id },
-                create: { title, modules, memory in
-                    await makeConversation(container: container, title: title, modules: modules, memory: memory)
+                create: { title, modules, memory, modelOverride, cwdOverride in
+                    await makeConversation(container: container, title: title, modules: modules, memory: memory, modelOverride: modelOverride, cwdOverride: cwdOverride)
                 }
             )
         }
@@ -295,10 +297,12 @@ struct AppRootView: View {
         container: AppContainer,
         title: String?,
         modules: [String],
-        memory: String?
+        memory: String?,
+        modelOverride: String? = nil,
+        cwdOverride: String? = nil
     ) async -> String? {
         do {
-            let detail = try await container.api.createConversation(title: title)
+            let detail = try await container.api.createConversation(title: title, modelOverride: modelOverride, cwdOverride: cwdOverride)
             let conv = Conversation(
                 id: detail.id,
                 title: detail.title,
