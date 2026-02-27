@@ -3,9 +3,9 @@ import Foundation
 /// Events received from the server over WebSocket.
 public enum WsEvent: Sendable {
     /// A streaming text chunk for an in-progress assistant message.
-    case messageDelta(messageId: String, conversationId: String, delta: String, seq: Int)
+    case messageDelta(messageId: String, conversationId: String, delta: String, seq: Int, sourceConversationId: String?)
     /// The assistant turn is complete. `content` is the authoritative full text.
-    case messageComplete(messageId: String, conversationId: String, content: String, seq: Int)
+    case messageComplete(messageId: String, conversationId: String, content: String, seq: Int, sourceConversationId: String?)
     /// The assistant turn failed.
     case messageError(messageId: String, conversationId: String, error: String)
     /// A tool call started — drives a spinner in the UI.
@@ -36,7 +36,8 @@ extension WsEvent {
                 let delta = json["delta"] as? String,
                 let seq = json["seq"] as? Int
             else { return nil }
-            return .messageDelta(messageId: messageId, conversationId: conversationId, delta: delta, seq: seq)
+            let deltaSourceConversationId = json["sourceConversationId"] as? String
+            return .messageDelta(messageId: messageId, conversationId: conversationId, delta: delta, seq: seq, sourceConversationId: deltaSourceConversationId)
 
         case "message.complete":
             guard
@@ -45,7 +46,8 @@ extension WsEvent {
                 let content = json["content"] as? String,
                 let seq = json["seq"] as? Int
             else { return nil }
-            return .messageComplete(messageId: messageId, conversationId: conversationId, content: content, seq: seq)
+            let sourceConversationId = json["sourceConversationId"] as? String
+            return .messageComplete(messageId: messageId, conversationId: conversationId, content: content, seq: seq, sourceConversationId: sourceConversationId)
 
         case "message.error":
             guard

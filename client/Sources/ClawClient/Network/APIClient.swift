@@ -249,8 +249,8 @@ public final class APIClient: Sendable {
         try await get("/conversations\(includeArchived ? "?archived=true" : "")")
     }
 
-    public func createConversation(title: String? = nil) async throws -> ConversationDetail {
-        try await post("/conversations", body: CreateConversationRequest(title: title))
+    public func createConversation(title: String? = nil, modelOverride: String? = nil, cwdOverride: String? = nil) async throws -> ConversationDetail {
+        try await post("/conversations", body: CreateConversationRequest(title: title, modelOverride: modelOverride, cwdOverride: cwdOverride))
     }
 
     public func updateConversation(

@@ -15,7 +15,6 @@ struct ToolActivityView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
-        .background(.regularMaterial)
-        .clipShape(Capsule())
+        .glassEffect(.regular, in: .capsule)
     }
 }

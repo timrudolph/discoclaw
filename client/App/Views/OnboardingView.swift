@@ -59,7 +59,7 @@ struct OnboardingView: View {
                 }
                 .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.glassProminent)
             .disabled(isRegistering || serverURL.isEmpty || setupToken.isEmpty)
 
             Spacer()

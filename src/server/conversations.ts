@@ -55,18 +55,20 @@ export function registerConversationRoutes(app: FastifyInstance, db: Db, config:
 
   // POST /conversations
   app.post('/conversations', async (req, reply) => {
-    const { title } = req.body as { title?: string };
+    const { title, modelOverride, cwdOverride } = req.body as { title?: string; modelOverride?: string; cwdOverride?: string };
     const id = crypto.randomUUID();
     const now = Date.now();
 
     db.prepare(`
-      INSERT INTO conversations (id, user_id, title, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(id, req.user.id, title ?? null, now, now);
+      INSERT INTO conversations (id, user_id, title, model_override, cwd_override, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(id, req.user.id, title ?? null, modelOverride ?? null, cwdOverride ?? null, now, now);
 
-    // Create the conversation's workspace directory (empty — no seeding from global workspace).
-    // Identity falls back to global workspace at invoke time when no custom files are present.
-    const workspacePath = path.join(config.workspacesBaseDir, id);
+    // When a project dir is specified, workspace files live inside it at .claw/.
+    // Otherwise use the internal workspaces dir keyed by conversation ID.
+    const workspacePath = cwdOverride
+      ? path.join(cwdOverride, '.claw')
+      : path.join(config.workspacesBaseDir, id);
     fs.mkdirSync(workspacePath, { recursive: true });
     db.prepare('UPDATE conversations SET workspace_path = ? WHERE id = ?').run(workspacePath, id);
 
@@ -77,6 +79,8 @@ export function registerConversationRoutes(app: FastifyInstance, db: Db, config:
     reply.status(201).send({
       id: row.id,
       title: row.title,
+      modelOverride: row.model_override ?? undefined,
+      cwdOverride: row.cwd_override ?? undefined,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     });

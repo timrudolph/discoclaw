@@ -126,12 +126,6 @@ function migrate(db: Db): void {
 
   const migrations: [number, () => void][] = [
     [0, () => v0(db)],
-    [1, () => db.exec(`ALTER TABLE conversations ADD COLUMN cwd_override TEXT`)],
-    [2, () => db.exec(`
-      ALTER TABLE conversations ADD COLUMN shadow_for TEXT REFERENCES conversations(id);
-      ALTER TABLE conversations ADD COLUMN shadow_origin TEXT REFERENCES conversations(id);
-    `)],
-    [3, () => db.exec(`ALTER TABLE messages ADD COLUMN source_conversation_id TEXT REFERENCES conversations(id)`)],
   ];
 
   for (const [version, run] of migrations) {
@@ -176,20 +170,23 @@ function v0(db: Db): void {
       assistant_name    TEXT,
       accent_color      TEXT,
       workspace_path    TEXT,
-      cwd_override      TEXT
+      cwd_override      TEXT,
+      shadow_for        TEXT REFERENCES conversations(id),
+      shadow_origin     TEXT REFERENCES conversations(id)
     );
 
     CREATE TABLE messages (
-      id              TEXT PRIMARY KEY,
-      client_id       TEXT,
-      conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
-      role            TEXT NOT NULL,
-      content         TEXT NOT NULL DEFAULT '',
-      status          TEXT NOT NULL,
-      error           TEXT,
-      seq             INTEGER NOT NULL,
-      created_at      INTEGER NOT NULL,
-      completed_at    INTEGER
+      id                     TEXT PRIMARY KEY,
+      client_id              TEXT,
+      conversation_id        TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+      role                   TEXT NOT NULL,
+      content                TEXT NOT NULL DEFAULT '',
+      status                 TEXT NOT NULL,
+      error                  TEXT,
+      seq                    INTEGER NOT NULL,
+      created_at             INTEGER NOT NULL,
+      completed_at           INTEGER,
+      source_conversation_id TEXT REFERENCES conversations(id)
     );
 
     CREATE INDEX idx_messages_conv ON messages(conversation_id, seq);

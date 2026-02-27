@@ -106,14 +106,15 @@ export function registerMessageRoutes(
     }
 
     // Handle @BotName cross-conv mentions
-    const mentionAssistantId = await handleMentionCommand(db, hub, runtime, config, conv, trimmed);
-    if (mentionAssistantId !== null) {
+    const mention = await handleMentionCommand(db, hub, runtime, config, conv, trimmed);
+    if (mention !== null) {
       reply.status(201).send({
         id: userMsgId,
         seq: userSeq,
         clientId: clientId ?? null,
         status: 'complete',
-        assistantMessageId: mentionAssistantId,
+        assistantMessageId: mention.assistantId,
+        sourceConversationId: mention.sourceConversationId,
       });
       return;
     }
@@ -218,13 +219,13 @@ function findOrCreateShadow(
   db.prepare(`
     INSERT INTO conversations
       (id, user_id, title, assistant_name, accent_color, model_override, workspace_path,
-       context_modules, kind, shadow_for, shadow_origin, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'shadow', ?, ?, ?, ?)
+       cwd_override, context_modules, kind, shadow_for, shadow_origin, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'shadow', ?, ?, ?, ?)
   `).run(
     shadowId, botConv.user_id,
     `${botConv.assistant_name ?? 'Bot'} (cross-chat)`,
     botConv.assistant_name, botConv.accent_color, botConv.model_override,
-    botConv.workspace_path, botConv.context_modules,
+    botConv.workspace_path, botConv.cwd_override, botConv.context_modules,
     botConv.id, originConv.id, now, now,
   );
   return db.prepare('SELECT * FROM conversations WHERE id = ?').get(shadowId) as ConversationRow;
@@ -237,6 +238,8 @@ function findOrCreateShadow(
  * back into the originating conversation. Returns the assistant message ID,
  * or null if no matching bot was found (message passes through to Claude).
  */
+type MentionResult = { assistantId: string; sourceConversationId: string };
+
 async function handleMentionCommand(
   db: Db,
   hub: WsHub,
@@ -244,14 +247,15 @@ async function handleMentionCommand(
   config: ServerConfig,
   originConv: ConversationRow,
   content: string,
-): Promise<string | null> {
+): Promise<MentionResult | null> {
   const match = content.match(/^@(\S+)\s*([\s\S]*)/);
   if (!match) return null;
 
   const [, mentionName, restContent] = match;
 
+  // Exclude shadow conversations — the real bot conv is what we want.
   const botConv = db
-    .prepare("SELECT * FROM conversations WHERE user_id = ? AND LOWER(assistant_name) = LOWER(?)")
+    .prepare("SELECT * FROM conversations WHERE user_id = ? AND LOWER(assistant_name) = LOWER(?) AND (kind IS NULL OR kind != 'shadow') ORDER BY created_at ASC LIMIT 1")
     .get(originConv.user_id, mentionName) as ConversationRow | undefined;
 
   // No matching bot — let the message pass through to the current conversation's Claude.
@@ -293,9 +297,10 @@ async function handleMentionCommand(
     responseConversationId: originConv.id,
     responseAssistantMessageId: assistantId,
     responseAssistantSeq: assistantSeq,
+    responseSourceConversationId: botConv.id,
   });
 
-  return assistantId;
+  return { assistantId, sourceConversationId: botConv.id };
 }
 
 // ─── Avatar command handler ───────────────────────────────────────────────────
@@ -311,7 +316,9 @@ function generateAvatarInBackground(
 ): void {
   void (async () => {
     try {
-      if (!config.geminiApiKey) throw new Error('GEMINI_API_KEY is not configured');
+      if (!config.ollamaEnabled) throw new Error('Ollama is not enabled. Set OLLAMA_ENABLED=true');
+      const imageModel = config.ollamaImageModels[0];
+      if (!imageModel) throw new Error('No image model configured in OLLAMA_IMAGE_MODELS');
 
       const workspacePath = conv.workspace_path ?? config.workspaceCwd;
       let identity = '';
@@ -321,36 +328,35 @@ function generateAvatarInBackground(
       } catch { /* no IDENTITY.md */ }
 
       const promptParts = [
-        'Pixar-style animated character portrait.',
-        identity ? `Character description:\n${identity}` : 'A friendly AI assistant.',
-        extraPrompt ? `Additional details: ${extraPrompt}` : '',
-        'Subsurface scattering skin glow, expressive oversized eyes, smooth volumetric lighting, warm and likeable. No text or labels. Square crop, face fills the frame.',
+        'Character portrait, centered headshot composition.',
+        identity || 'A friendly AI assistant.',
+        extraPrompt,
+        'Clean background, expressive face, warm lighting, no text or watermarks. Square 1:1 crop.',
       ].filter(Boolean);
 
       const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${config.geminiApiKey}`,
+        `${config.ollamaBaseUrl}/api/generate`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            contents: [{ parts: [{ text: promptParts.join(' ') }] }],
-            generationConfig: { responseModalities: ['IMAGE'] },
+            model: imageModel,
+            prompt: promptParts.join(' '),
+            stream: false,
           }),
         },
       );
 
       if (!response.ok) {
         const err = await response.text();
-        throw new Error(`Gemini API error ${response.status}: ${err}`);
+        throw new Error(`Ollama API error ${response.status}: ${err}`);
       }
 
-      type GeminiPart = { text?: string; inlineData?: { mimeType: string; data: string } };
-      type GeminiResponse = { candidates: Array<{ content: { parts: GeminiPart[] } }> };
-      const data = await response.json() as GeminiResponse;
-      const imagePart = data.candidates[0]?.content.parts.find((p) => p.inlineData);
-      if (!imagePart?.inlineData) throw new Error('No image in Gemini response');
+      const data = await response.json() as { images?: string[]; image?: string };
+      const imageBase64 = data.images?.[0] ?? data.image;
+      if (!imageBase64) throw new Error('No image in Ollama response');
 
-      const png = await sharp(Buffer.from(imagePart.inlineData.data, 'base64'))
+      const png = await sharp(Buffer.from(imageBase64, 'base64'))
         .resize(512, 512)
         .png()
         .toBuffer();
@@ -387,7 +393,7 @@ function generateAvatarInBackground(
 
 /**
  * Handles `!avatar` command. Inserts a pending assistant message, fires
- * Gemini image generation in the background, and returns the assistant
+ * Ollama image generation in the background, and returns the assistant
  * message ID (signals "handled"). Returns null if not an `!avatar` command.
  */
 function handleAvatarCommand(
@@ -437,5 +443,6 @@ function formatMessage(r: MessageRow) {
     seq: r.seq,
     createdAt: r.created_at,
     completedAt: r.completed_at ?? undefined,
+    sourceConversationId: r.source_conversation_id ?? undefined,
   };
 }

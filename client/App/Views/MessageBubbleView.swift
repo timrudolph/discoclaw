@@ -91,7 +91,10 @@ struct MessageBubbleView: View {
                 if isUser && isError, let onRetry {
                     Button(action: onRetry) {
                         Label("Retry", systemImage: "arrow.clockwise")
-                            .font(.caption.weight(.medium))
+                            .font(.subheadline.weight(.medium))
+                            .padding(.vertical, 6)
+                            .padding(.horizontal, 10)
+                            .background(Color.red.opacity(0.08), in: Capsule())
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(.red.opacity(0.8))

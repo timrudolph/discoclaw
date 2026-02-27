@@ -67,7 +67,7 @@ struct CopyCodeButton: View {
                 .font(.caption.weight(.medium))
                 .foregroundStyle(copied ? .green : .secondary)
                 .frame(width: 22, height: 22)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 5))
+                .glassEffect(.clear, in: .rect(cornerRadius: 5))
         }
         .buttonStyle(.plain)
         .help("Copy code")

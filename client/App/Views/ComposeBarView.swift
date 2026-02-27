@@ -124,6 +124,7 @@ struct ComposeBarView: View {
     }
 
     var body: some View {
+        GlassEffectContainer {
         VStack(spacing: 0) {
             // Attachment chips — shown only when files are attached.
             if !attachments.isEmpty {
@@ -141,49 +142,49 @@ struct ComposeBarView: View {
                 Divider()
             }
 
-            HStack(alignment: .bottom, spacing: 6) {
-                Button {
-                    showFileImporter = true
-                } label: {
-                    Image(systemName: "paperclip")
-                        .font(.title3)
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-                .padding(.bottom, 8)
-
-                GrowingTextEditor(
-                    text: $text,
-                    onReturnKey: { if canSend { onSend() } },
-                    isFocused: composeFocus
-                )
-                .background(.background, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .strokeBorder(Color.secondary.opacity(0.25), lineWidth: 0.5)
-                }
-
-                if isStreaming {
-                    Button(action: onStop) {
-                        Image(systemName: "stop.circle.fill")
-                            .font(.title2)
-                            .symbolRenderingMode(.hierarchical)
-                            .foregroundStyle(.red)
+                HStack(alignment: .bottom, spacing: 6) {
+                    Button {
+                        showFileImporter = true
+                    } label: {
+                        Image(systemName: "paperclip")
+                            .font(.title3)
+                            .foregroundStyle(.secondary)
                     }
                     .buttonStyle(.plain)
-                } else {
-                    Button(action: onSend) {
-                        Image(systemName: "arrow.up.circle.fill")
-                            .font(.title2)
-                            .symbolRenderingMode(.hierarchical)
+                    .glassEffect(.regular.interactive(), in: .circle)
+
+                    GrowingTextEditor(
+                        text: $text,
+                        onReturnKey: { if canSend { onSend() } },
+                        isFocused: composeFocus
+                    )
+                    .glassEffect(.regular, in: .rect(cornerRadius: 8))
+
+                    if isStreaming {
+                        Button(action: onStop) {
+                            Image(systemName: "stop.circle.fill")
+                                .font(.system(size: 28))
+                                .symbolRenderingMode(.hierarchical)
+                                .foregroundStyle(.red)
+                        }
+                        .buttonStyle(.plain)
+                        .glassEffect(.regular.interactive(), in: .circle)
+                    } else {
+                        Button(action: onSend) {
+                            Image(systemName: "arrow.up.circle.fill")
+                                .font(.system(size: 28))
+                                .symbolRenderingMode(.hierarchical)
+                        }
+                        .buttonStyle(.plain)
+                        .glassEffect(.regular.tint(.accentColor).interactive(), in: .circle)
+                        .disabled(!canSend)
                     }
-                    .disabled(!canSend)
                 }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
         }
-        .background(.bar)
+        }
+        .background(.clear)
         // When the parent clears text after sending, also clear chips.
         .onChange(of: text) { _, newValue in
             if newValue.isEmpty { attachments = [] }
@@ -282,12 +283,14 @@ private struct AttachmentChipView: View {
             Button(action: onRemove) {
                 Image(systemName: "xmark")
                     .font(.caption2.weight(.bold))
+                    .frame(minWidth: 28, minHeight: 28)
+                    .contentShape(Circle())
             }
             .buttonStyle(.plain)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
-        .background(Color.accentColor.opacity(0.12), in: Capsule())
+        .glassEffect(.regular.tint(.accentColor), in: .capsule)
         .foregroundStyle(Color.accentColor)
     }
 }

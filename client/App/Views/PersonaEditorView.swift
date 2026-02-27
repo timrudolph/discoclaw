@@ -66,8 +66,8 @@ struct PersonaEditorView: View {
                                         hasCustomAccent = false
                                         accentColor = .accentColor
                                     }
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                    .font(.caption.weight(.medium))
+                                    .buttonStyle(.glass)
                                 }
                             }
                         }
@@ -136,7 +136,7 @@ struct PersonaEditorView: View {
                             .font(.subheadline)
                     } else {
                         Button("Save") { Task { await save() } }
-                            .buttonStyle(.borderedProminent)
+                            .buttonStyle(.glassProminent)
                     }
                 }
             }
@@ -151,7 +151,7 @@ struct PersonaEditorView: View {
             .onChange(of: selectedPhotoItem) { _, item in
                 Task { await uploadPhoto(item) }
             }
-            .onAppear { Task { await loadFilesFromAPI() } }
+            .task { await loadFilesFromAPI() }
         }
     }
 

@@ -36,39 +36,72 @@ private func cronDescription(_ expr: String) -> String {
     return expr
 }
 
-// MARK: - Schedule chip picker
+// MARK: - Schedule picker
 
 private struct ScheduleChipPicker: View {
     @Binding var schedule: String
 
-    private let presets: [(label: String, value: String)] = [
-        ("Daily 9am",     "0 9 * * *"),
-        ("Weekdays 9am",  "0 9 * * 1-5"),
-        ("Mondays 9am",   "0 9 * * 1"),
-        ("Every hour",    "0 * * * *"),
-        ("Every 30 min",  "*/30 * * * *"),
-    ]
+    private enum RepeatMode: String, CaseIterable, Identifiable {
+        case daily    = "Daily"
+        case weekdays = "Weekdays"
+        case weekends = "Weekends"
+        case weekly   = "Weekly"
+        case hourly   = "Hourly"
+        case interval = "Interval"
+        case custom   = "Custom"
+        var id: String { rawValue }
+    }
 
-    private var isCustom: Bool { !presets.map(\.value).contains(schedule) }
+    @State private var mode: RepeatMode
+    @State private var timeDate: Date
+    @State private var weekday: Int
+    @State private var intervalMinutes: Int
+
+    private let weekdayNames = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"]
+    private let intervalOptions = [5, 10, 15, 20, 30, 45, 60]
+
+    init(schedule: Binding<String>) {
+        _schedule = schedule
+        let (m, t, d, i) = Self.parse(schedule.wrappedValue)
+        _mode            = State(initialValue: m)
+        _timeDate        = State(initialValue: t)
+        _weekday         = State(initialValue: d)
+        _intervalMinutes = State(initialValue: i)
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(presets, id: \.value) { preset in
-                        chip(preset.label, active: schedule == preset.value) {
-                            schedule = preset.value
-                        }
-                    }
-                    chip("Custom", active: isCustom) {
-                        if !isCustom { schedule = "" }
+        Group {
+            Picker("Repeat", selection: $mode) {
+                ForEach(RepeatMode.allCases) { m in
+                    Text(m.rawValue).tag(m)
+                }
+            }
+            .onChange(of: mode) { _, _ in rebuildCron() }
+
+            if mode == .weekly {
+                Picker("Day", selection: $weekday) {
+                    ForEach(0..<7, id: \.self) { d in
+                        Text(weekdayNames[d]).tag(d)
                     }
                 }
-                .padding(.horizontal, 2)
-                .padding(.vertical, 2)
+                .onChange(of: weekday) { _, _ in rebuildCron() }
             }
 
-            if isCustom {
+            if [.daily, .weekdays, .weekends, .weekly].contains(mode) {
+                DatePicker("Time", selection: $timeDate, displayedComponents: .hourAndMinute)
+                    .onChange(of: timeDate) { _, _ in rebuildCron() }
+            }
+
+            if mode == .interval {
+                Picker("Every", selection: $intervalMinutes) {
+                    ForEach(intervalOptions, id: \.self) { n in
+                        Text(n < 60 ? "\(n) minutes" : "1 hour").tag(n)
+                    }
+                }
+                .onChange(of: intervalMinutes) { _, _ in rebuildCron() }
+            }
+
+            if mode == .custom {
                 TextField("minute hour day month weekday", text: $schedule)
                     .fontDesign(.monospaced)
                     .autocorrectionDisabled()
@@ -76,27 +109,56 @@ private struct ScheduleChipPicker: View {
                     .keyboardType(.asciiCapable)
                     #endif
             }
-
-            let desc = cronDescription(schedule)
-            if !schedule.isEmpty {
-                Label(desc == schedule ? "Custom schedule" : desc, systemImage: "clock")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
         }
     }
 
-    private func chip(_ label: String, active: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(label)
-                .font(.subheadline)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(active ? Color.accentColor : Color.secondary.opacity(0.15),
-                            in: Capsule())
-                .foregroundStyle(active ? Color.white : Color.primary)
+    // MARK: Parse cron → state
+
+    private static func parse(_ expr: String) -> (RepeatMode, Date, Int, Int) {
+        var c = DateComponents(); c.hour = 9; c.minute = 0
+        let nine = Calendar.current.date(from: c) ?? Date()
+
+        let parts = expr.split(separator: " ", omittingEmptySubsequences: false).map(String.init)
+        guard parts.count == 5 else { return (.custom, nine, 1, 30) }
+        let (min, hour, dom, month, dow) = (parts[0], parts[1], parts[2], parts[3], parts[4])
+        guard dom == "*", month == "*" else { return (.custom, nine, 1, 30) }
+
+        if min.hasPrefix("*/"), let n = Int(min.dropFirst(2)), hour == "*", dow == "*" {
+            let snapped = [5,10,15,20,30,45,60].contains(n) ? n : 30
+            return (.interval, nine, 1, snapped)
         }
-        .buttonStyle(.plain)
+        if min == "0", hour == "*", dow == "*" { return (.hourly, nine, 1, 30) }
+
+        guard let h = Int(hour), let m = Int(min) else { return (.custom, nine, 1, 30) }
+        var comps = DateComponents(); comps.hour = h; comps.minute = m
+        let t = Calendar.current.date(from: comps) ?? nine
+
+        switch dow {
+        case "*":    return (.daily,    t, 1, 30)
+        case "1-5":  return (.weekdays, t, 1, 30)
+        case "0,6":  return (.weekends, t, 1, 30)
+        default:
+            if let d = Int(dow), d >= 0, d <= 6 { return (.weekly, t, d, 30) }
+            return (.custom, t, 1, 30)
+        }
+    }
+
+    // MARK: State → cron
+
+    private func rebuildCron() {
+        guard mode != .custom else { return }
+        let cal = Calendar.current
+        let h = cal.component(.hour, from: timeDate)
+        let m = cal.component(.minute, from: timeDate)
+        switch mode {
+        case .daily:    schedule = "\(m) \(h) * * *"
+        case .weekdays: schedule = "\(m) \(h) * * 1-5"
+        case .weekends: schedule = "\(m) \(h) * * 0,6"
+        case .weekly:   schedule = "\(m) \(h) * * \(weekday)"
+        case .hourly:   schedule = "0 * * * *"
+        case .interval: schedule = "*/\(intervalMinutes) * * * *"
+        case .custom:   break
+        }
     }
 }
 
@@ -113,28 +175,34 @@ struct CronJobsView: View {
     @State private var editingJob: CronJob?
 
     var body: some View {
-        Group {
-            if isLoading {
-                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if jobs.isEmpty {
-                ContentUnavailableView(
-                    "No Scheduled Prompts",
-                    systemImage: "clock.badge.checkmark",
-                    description: Text("Create a prompt that fires automatically on a schedule — daily briefings, weekly reviews, reminders.")
+        List {
+            ForEach(jobs) { job in
+                CronJobRow(
+                    job: job,
+                    conversations: conversations,
+                    onToggle: { Task { await toggle(job) } },
+                    onDelete: { Task { await delete(job) } },
+                    onEdit: { editingJob = job }
                 )
-            } else {
-                List {
-                    ForEach(jobs) { job in
-                        CronJobRow(
-                            job: job,
-                            conversations: conversations,
-                            onToggle: { Task { await toggle(job) } },
-                            onDelete: { Task { await delete(job) } },
-                            onEdit: { editingJob = job }
-                        )
-                    }
+            }
+        }
+        .listStyle(.inset)
+        .overlay {
+            if isLoading {
+                ProgressView("Loading…")
+            } else if jobs.isEmpty {
+                VStack(spacing: 12) {
+                    Image(systemName: "clock.badge.checkmark")
+                        .font(.system(size: 48))
+                        .foregroundStyle(.secondary)
+                    Text("No Scheduled Prompts")
+                        .font(.headline)
+                    Text(error ?? "No jobs found")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
                 }
-                .listStyle(.inset)
             }
         }
         .navigationTitle("Scheduled Prompts")
@@ -150,24 +218,27 @@ struct CronJobsView: View {
         )) {
             Button("OK", role: .cancel) { error = nil }
         } message: { Text(error ?? "") }
-        .sheet(isPresented: $showingCreate) {
-            CronJobFormView(api: api, conversations: conversations, existingJob: nil) { newJob in
-                jobs.append(newJob)
-            }
+        .sheet(isPresented: $showingCreate, onDismiss: { Task { await reload() } }) {
+            CronJobFormView(api: api, conversations: conversations, existingJob: nil) { _ in }
         }
-        .sheet(item: $editingJob) { job in
-            CronJobFormView(api: api, conversations: conversations, existingJob: job) { updated in
-                if let idx = jobs.firstIndex(where: { $0.id == updated.id }) {
-                    jobs[idx] = updated
-                }
-            }
+        .sheet(item: $editingJob, onDismiss: { Task { await reload() } }) { job in
+            CronJobFormView(api: api, conversations: conversations, existingJob: job) { _ in }
         }
         .task { await load() }
+        #if os(macOS)
+        .frame(minWidth: 480, minHeight: 360)
+        #endif
     }
 
     private func load() async {
         isLoading = true
         defer { isLoading = false }
+        do { jobs = try await api.listCronJobs().jobs }
+        catch { self.error = error.localizedDescription }
+    }
+
+    /// Silent refresh — updates the list without showing the loading spinner.
+    private func reload() async {
         do { jobs = try await api.listCronJobs().jobs }
         catch { self.error = error.localizedDescription }
     }
@@ -214,53 +285,47 @@ private struct CronJobRow: View {
     }
 
     var body: some View {
-        HStack(spacing: 14) {
-            // Clock icon badge
-            ZStack {
-                Circle()
-                    .fill(job.enabled ? Color.accentColor.opacity(0.12) : Color.secondary.opacity(0.08))
-                    .frame(width: 44, height: 44)
-                Image(systemName: job.enabled ? "clock.fill" : "clock")
-                    .font(.system(size: 20))
-                    .foregroundStyle(job.enabled ? Color.accentColor : .secondary)
-            }
-
-            VStack(alignment: .leading, spacing: 3) {
+        HStack(alignment: .top, spacing: 12) {
+            // Text area — tap opens editor
+            VStack(alignment: .leading, spacing: 5) {
                 Text(job.name)
                     .font(.headline)
-                    .foregroundStyle(job.enabled ? .primary : .secondary)
 
-                Text(cronDescription(job.schedule))
+                Label(cronDescription(job.schedule), systemImage: "clock")
                     .font(.subheadline)
-                    .foregroundStyle(job.enabled ? .secondary : .tertiary)
+                    .foregroundStyle(job.enabled ? Color.accentColor : Color.secondary)
 
                 Text(promptPreview)
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
 
-                HStack(spacing: 4) {
-                    Image(systemName: "bubble.left")
-                        .font(.caption2)
-                    Text(conversationName)
-                        .font(.caption)
-                    Text("·")
-                        .foregroundStyle(.quaternary)
+                HStack(spacing: 5) {
+                    Label(conversationName, systemImage: "bubble.left.fill")
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
                     Text(lastRunText)
-                        .font(.caption)
                 }
+                .font(.caption)
                 .foregroundStyle(.tertiary)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .onTapGesture { onEdit() }
 
-            Spacer()
-
-            Toggle("", isOn: .constant(job.enabled))
+            // Toggle is its own hit target — doesn't bleed into the row tap
+            Toggle("", isOn: Binding(get: { job.enabled }, set: { _ in onToggle() }))
                 .labelsHidden()
-                .onTapGesture { onToggle() }
+                .padding(.top, 2)
         }
-        .padding(.vertical, 6)
-        .contentShape(Rectangle())
-        .onTapGesture { onEdit() }
+        .padding(.vertical, 8)
+        .opacity(job.enabled ? 1 : 0.5)
+        .contextMenu {
+            Button(action: onEdit) { Label("Edit", systemImage: "pencil") }
+            Divider()
+            Button(role: .destructive, action: onDelete) { Label("Delete", systemImage: "trash") }
+        }
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             Button(role: .destructive, action: onDelete) {
                 Label("Delete", systemImage: "trash")
@@ -315,7 +380,6 @@ struct CronJobFormView: View {
                 // ── Schedule ──────────────────────────────────────────────
                 Section {
                     ScheduleChipPicker(schedule: $schedule)
-                        .padding(.vertical, 4)
                     NavigationLink {
                         TimeZonePickerView(selected: $timezone)
                     } label: {
@@ -366,7 +430,7 @@ struct CronJobFormView: View {
                         ProgressView().controlSize(.small)
                     } else {
                         Button(isEditing ? "Save" : "Create") { Task { await save() } }
-                            .buttonStyle(.borderedProminent)
+                            .buttonStyle(.glassProminent)
                             .disabled(!canSave)
                     }
                 }

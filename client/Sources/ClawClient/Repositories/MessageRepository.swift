@@ -83,12 +83,21 @@ public final class MessageRepository {
 
     /// Append a streaming delta from the WebSocket to the assistant message's content.
     /// Uses a single SQL UPDATE to avoid a read-modify-write race.
-    public func appendDelta(id: String, delta: String) async throws {
+    /// If `sourceConversationId` is provided and the column is currently NULL, it is set —
+    /// this ensures @mention attribution is correct from the first streaming chunk.
+    public func appendDelta(id: String, delta: String, sourceConversationId: String? = nil) async throws {
         try await db.write { db in
-            try db.execute(
-                sql: "UPDATE messages SET content = content || ? WHERE id = ?",
-                arguments: [delta, id]
-            )
+            if let sourceId = sourceConversationId {
+                try db.execute(
+                    sql: "UPDATE messages SET content = content || ?, sourceConversationId = COALESCE(sourceConversationId, ?) WHERE id = ?",
+                    arguments: [delta, sourceId, id]
+                )
+            } else {
+                try db.execute(
+                    sql: "UPDATE messages SET content = content || ? WHERE id = ?",
+                    arguments: [delta, id]
+                )
+            }
         }
     }
 
@@ -136,13 +145,14 @@ public final class MessageRepository {
             try db.execute(
                 sql: """
                     INSERT OR IGNORE INTO messages
-                        (id, clientId, conversationId, role, content, status, error, seq, createdAt, completedAt)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        (id, clientId, conversationId, role, content, status, error, seq, createdAt, completedAt, sourceConversationId)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                 arguments: [
                     message.id, message.clientId, message.conversationId,
                     message.role.rawValue, message.content, message.status.rawValue,
                     message.error, message.seq, message.createdAt, message.completedAt,
+                    message.sourceConversationId,
                 ]
             )
         }
@@ -152,16 +162,27 @@ public final class MessageRepository {
     /// Safer than trusting all deltas arrived in order (handles any missed chunks).
     /// Guards against overwriting an error state: the runtime always emits done after error,
     /// so a message.complete can arrive after message.error on the same turn.
-    public func finalize(id: String, content: String, completedAt: Date) async throws {
+    public func finalize(id: String, content: String, completedAt: Date, sourceConversationId: String? = nil) async throws {
         try await db.write { db in
-            try db.execute(
-                sql: """
-                    UPDATE messages
-                       SET content = ?, status = 'complete', completedAt = ?
-                     WHERE id = ? AND status != 'error'
-                    """,
-                arguments: [content, completedAt, id]
-            )
+            if let sourceId = sourceConversationId {
+                try db.execute(
+                    sql: """
+                        UPDATE messages
+                           SET content = ?, status = 'complete', completedAt = ?, sourceConversationId = ?
+                         WHERE id = ? AND status != 'error'
+                        """,
+                    arguments: [content, completedAt, sourceId, id]
+                )
+            } else {
+                try db.execute(
+                    sql: """
+                        UPDATE messages
+                           SET content = ?, status = 'complete', completedAt = ?
+                         WHERE id = ? AND status != 'error'
+                        """,
+                    arguments: [content, completedAt, id]
+                )
+            }
         }
     }
 

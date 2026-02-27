@@ -56,46 +56,50 @@ struct BeadsListView: View {
                 }
             }
         }
+        .scrollEdgeEffectStyle(.soft, for: .top)
+        .scrollEdgeEffectStyle(.soft, for: .bottom)
         .safeAreaInset(edge: .bottom) {
             VStack(spacing: 0) {
-                Divider()
-                VStack(spacing: 10) {
-                    Picker("Filter", selection: $filter) {
-                        ForEach(Self.filters, id: \.value) { f in
-                            Text(f.label).tag(f.value)
+                GlassEffectContainer {
+                    VStack(spacing: 10) {
+                        Picker("Filter", selection: $filter) {
+                            ForEach(Self.filters, id: \.value) { f in
+                                Text(f.label).tag(f.value)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+
+                        HStack(spacing: 4) {
+                            // Chats tab — inactive
+                            Button { sidebarMode = .chats } label: {
+                                Label("Chats", systemImage: "bubble.left.and.bubble.right")
+                                    .font(.caption.weight(.semibold))
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.secondary)
+                            .glassEffect(.regular, in: .capsule)
+
+                            // Beads tab — active
+                            Button {} label: {
+                                Label("Beads", systemImage: "checkmark.circle.fill")
+                                    .font(.caption.weight(.semibold))
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.tint)
+                            .glassEffect(.regular.tint(.accentColor), in: .capsule)
+
+                            Spacer()
                         }
                     }
-                    .pickerStyle(.segmented)
-
-                    HStack(spacing: 4) {
-                        // Chats tab — inactive
-                        Button { sidebarMode = .chats } label: {
-                            Label("Chats", systemImage: "bubble.left.and.bubble.right")
-                                .font(.caption.weight(.semibold))
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.secondary)
-
-                        // Beads tab — active
-                        Button {} label: {
-                            Label("Beads", systemImage: "checkmark.circle.fill")
-                                .font(.caption.weight(.semibold))
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(.tint.opacity(0.12), in: Capsule())
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.tint)
-
-                        Spacer()
-                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
             }
-            .background(.bar)
+            .background(.clear)
         }
         .overlay {
             if isLoading {

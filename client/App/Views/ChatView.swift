@@ -66,15 +66,14 @@ struct ChatView: View {
         .navigationTitle(conversationTitle)
         #endif
         .toolbar {
-            ToolbarItem(placement: .primaryAction) {
+            ToolbarItemGroup(placement: .primaryAction) {
                 Button {
                     showingChatMemory = true
                 } label: {
                     Label("Chat Memory", systemImage: "brain")
                 }
                 .help("Chat Memory")
-            }
-            ToolbarItem(placement: .primaryAction) {
+
                 Menu {
                     ShareLink(item: exportText, subject: Text(conversation?.title ?? "Chat")) {
                         Label("Export", systemImage: "square.and.arrow.up")
@@ -214,6 +213,7 @@ struct ChatView: View {
         GeometryReader { scrollGeo in
             ScrollViewReader { proxy in
                 ScrollView {
+                  GlassEffectContainer {
                     LazyVStack(spacing: 10) {
                         if viewModel.hasMore {
                             Button {
@@ -228,7 +228,11 @@ struct ChatView: View {
                                         .frame(maxWidth: .infinity)
                                 } else {
                                     Label("Load earlier messages", systemImage: "arrow.up.circle")
+                                        #if os(iOS)
+                                        .font(.subheadline)
+                                        #else
                                         .font(.caption)
+                                        #endif
                                         .frame(maxWidth: .infinity)
                                 }
                             }
@@ -296,7 +300,10 @@ struct ChatView: View {
                             )
                     }
                     .padding(.vertical, 12)
+                  }
                 }
+                .scrollEdgeEffectStyle(.soft, for: .top)
+                .scrollEdgeEffectStyle(.soft, for: .bottom)
                 .onTapGesture { composeFocused = true }
                 .onPreferenceChange(AtBottomKey.self) { isAtBottom in
                     atBottom = isAtBottom
@@ -322,10 +329,9 @@ struct ChatView: View {
                             Image(systemName: "arrow.down.circle.fill")
                                 .font(.title2)
                                 .padding(8)
-                                .background(.thinMaterial, in: Circle())
-                                .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
                         }
                         .buttonStyle(.plain)
+                        .glassEffect(.regular.interactive(), in: .circle)
                         .padding(.trailing, 12)
                         .padding(.bottom, 8)
                         .transition(.scale.combined(with: .opacity))

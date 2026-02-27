@@ -4,7 +4,7 @@ import type { WebSocket } from '@fastify/websocket';
 
 export type WsEvent =
   | { type: 'message.delta'; messageId: string; conversationId: string; delta: string; seq: number }
-  | { type: 'message.complete'; messageId: string; conversationId: string; content: string; seq: number }
+  | { type: 'message.complete'; messageId: string; conversationId: string; content: string; seq: number; sourceConversationId?: string }
   | { type: 'message.error'; messageId: string; conversationId: string; error: string }
   | { type: 'tool.start'; messageId: string; tool: string; label: string }
   | { type: 'tool.end'; messageId: string; tool: string }

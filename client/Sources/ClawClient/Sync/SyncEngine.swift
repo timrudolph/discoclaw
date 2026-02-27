@@ -19,6 +19,9 @@ public final class SyncEngine: ObservableObject {
     /// Incremented whenever a bead is created or updated via tool call or another session.
     /// Views observe this to know when to refresh their bead lists.
     @Published public private(set) var beadsVersion: Int = 0
+    /// Incremented whenever any conversation metadata changes (e.g. avatar regenerated).
+    /// ChatView observes this to know when to re-fetch the assistant avatar.
+    @Published public private(set) var avatarRefreshToken: Int = 0
 
     private let api: APIClient
     private let ws: WebSocketClient
@@ -148,13 +151,13 @@ public final class SyncEngine: ObservableObject {
 
     private func applyEvent(_ event: WsEvent) async {
         switch event {
-        case .messageDelta(let messageId, _, let delta, let seq):
-            try? await messageRepo.appendDelta(id: messageId, delta: delta)
+        case .messageDelta(let messageId, _, let delta, let seq, let sourceConversationId):
+            try? await messageRepo.appendDelta(id: messageId, delta: delta, sourceConversationId: sourceConversationId)
             SyncCursor.advance(to: seq)
 
-        case .messageComplete(let messageId, _, let content, let seq):
+        case .messageComplete(let messageId, _, let content, let seq, let sourceConversationId):
             // Overwrite with authoritative content — handles any missed delta chunks.
-            try? await messageRepo.finalize(id: messageId, content: content, completedAt: Date())
+            try? await messageRepo.finalize(id: messageId, content: content, completedAt: Date(), sourceConversationId: sourceConversationId)
             activeTools.removeValue(forKey: messageId)
             SyncCursor.advance(to: seq)
 
@@ -173,6 +176,7 @@ public final class SyncEngine: ObservableObject {
         case .conversationUpdated:
             // Metadata changed on another device — pull the delta.
             await performSync()
+            avatarRefreshToken += 1
 
         case .beadsUpdated:
             beadsVersion += 1

@@ -23,6 +23,7 @@ struct BeadDetailView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let bead {
                 ScrollView {
+                  GlassEffectContainer {
                     VStack(alignment: .leading, spacing: 20) {
                         // Header
                         VStack(alignment: .leading, spacing: 6) {
@@ -34,7 +35,7 @@ struct BeadDetailView: View {
                                     .foregroundStyle(.secondary)
                                     .padding(.horizontal, 6)
                                     .padding(.vertical, 2)
-                                    .background(.secondary.opacity(0.12), in: Capsule())
+                                    .glassEffect(.regular, in: .capsule)
                                 Spacer()
                                 if !bead.displayPriority.isEmpty {
                                     Text(bead.displayPriority)
@@ -42,7 +43,7 @@ struct BeadDetailView: View {
                                         .foregroundStyle(.orange)
                                         .padding(.horizontal, 6)
                                         .padding(.vertical, 2)
-                                        .background(.orange.opacity(0.12), in: Capsule())
+                                        .glassEffect(.regular.tint(.orange), in: .capsule)
                                 }
                             }
                             Text(bead.title)
@@ -111,10 +112,12 @@ struct BeadDetailView: View {
                                 Label("Close Bead", systemImage: "checkmark.circle")
                                     .frame(maxWidth: .infinity)
                             }
-                            .buttonStyle(.bordered)
+                            .buttonStyle(.glass)
+                            .tint(.red)
                         }
                     }
                     .padding()
+                  }
                 }
             } else if error != nil {
                 VStack(spacing: 8) {
@@ -216,12 +219,14 @@ struct BeadDetailView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             if let labels = bead.labels, !labels.isEmpty {
-                FlowLayout(labels) { label in
-                    Text(label)
-                        .font(.caption)
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 3)
-                        .background(.secondary.opacity(0.15), in: Capsule())
+                GlassEffectContainer {
+                    FlowLayout(labels) { label in
+                        Text(label)
+                            .font(.caption)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .glassEffect(.regular, in: .capsule)
+                    }
                 }
             }
             if bead.status != "closed" {

@@ -12,7 +12,7 @@ function formatJob(r: CronJobRow) {
     prompt: r.prompt,
     conversationId: r.conversation_id,
     enabled: r.enabled === 1,
-    lastRunAt: r.last_run_at ?? undefined,
+    lastRunAt: r.last_run_at ?? null,
     createdAt: r.created_at,
   };
 }

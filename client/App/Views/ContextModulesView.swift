@@ -70,7 +70,7 @@ struct ContextModulesView: View {
                         Label("Apply Now", systemImage: "bolt.fill")
                     }
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.glass)
                 .disabled(isApplying)
                 .help("Reset the session so the next message starts fresh with these modules")
 
@@ -93,7 +93,7 @@ struct ContextModulesView: View {
                 }
 
                 Button("Done") { dismiss() }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.glassProminent)
                     .keyboardShortcut(.defaultAction)
             }
             .padding(.horizontal, 20)
@@ -119,46 +119,48 @@ struct ContextModulesView: View {
     // MARK: - Chip grid
 
     private var moduleChips: some View {
-        LazyVGrid(
-            columns: [GridItem(.adaptive(minimum: 100), spacing: 8, alignment: .leading)],
-            alignment: .leading,
-            spacing: 8
-        ) {
-            ForEach(available) { module in
-                ModuleChipButton(
-                    label: module.label,
-                    isSelected: active.contains(module.name)
-                ) {
-                    if active.contains(module.name) {
-                        active.remove(module.name)
-                    } else {
-                        active.insert(module.name)
+        GlassEffectContainer {
+            LazyVGrid(
+                columns: [GridItem(.adaptive(minimum: 100), spacing: 8, alignment: .leading)],
+                alignment: .leading,
+                spacing: 8
+            ) {
+                ForEach(available) { module in
+                    ModuleChipButton(
+                        label: module.label,
+                        isSelected: active.contains(module.name)
+                    ) {
+                        if active.contains(module.name) {
+                            active.remove(module.name)
+                        } else {
+                            active.insert(module.name)
+                        }
+                        Task { await save() }
                     }
-                    Task { await save() }
-                }
-                .contextMenu {
-                    Button(role: .destructive) {
-                        Task { await deleteModule(module) }
-                    } label: {
-                        Label("Delete \"\(module.label)\"", systemImage: "trash")
+                    .contextMenu {
+                        Button(role: .destructive) {
+                            Task { await deleteModule(module) }
+                        } label: {
+                            Label("Delete \"\(module.label)\"", systemImage: "trash")
+                        }
                     }
                 }
-            }
 
-            Button { showingNewModule = true } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: "plus")
-                        .font(.caption2.weight(.bold))
-                    Text("Add Custom")
-                        .font(.caption.weight(.medium))
-                        .lineLimit(1)
+                Button { showingNewModule = true } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "plus")
+                            .font(.caption2.weight(.bold))
+                        Text("Add Custom")
+                            .font(.caption.weight(.medium))
+                            .lineLimit(1)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .glassEffect(.regular, in: .capsule)
+                    .foregroundStyle(.primary)
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(.secondary.opacity(0.12), in: Capsule())
-                .foregroundStyle(.primary)
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
         }
     }
 
@@ -238,13 +240,13 @@ private struct ModuleChipButton: View {
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .background(
-                isSelected ? Color.accentColor : Color.secondary.opacity(0.12),
-                in: Capsule()
-            )
             .foregroundStyle(isSelected ? Color.white : Color.primary)
         }
         .buttonStyle(.plain)
+        .glassEffect(
+            isSelected ? .regular.tint(.accentColor) : .regular,
+            in: .capsule
+        )
     }
 }
 
@@ -353,7 +355,7 @@ private struct NewContextModuleView: View {
                     }
                     .frame(minWidth: 80)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.glassProminent)
                 .keyboardShortcut(.defaultAction)
                 .disabled(!canCreate)
             }

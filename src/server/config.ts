@@ -40,14 +40,17 @@ export type ServerConfig = {
   // Feature flags
   beadsEnabled: boolean;
 
-  // Anthropic API key (used for !avatar command)
-  anthropicApiKey: string | null;
-
   // Avatar storage directory
   avatarsDir: string;
 
   // Per-conversation workspace directories
   workspacesBaseDir: string;
+
+  // Ollama (local LLM / image gen)
+  ollamaEnabled: boolean;
+  ollamaBaseUrl: string;
+  ollamaDefaultModel: string;
+  ollamaImageModels: string[];
 };
 
 function str(env: NodeJS.ProcessEnv, key: string, fallback?: string): string {
@@ -118,8 +121,12 @@ export function parseServerConfig(env: NodeJS.ProcessEnv): ServerConfig {
     appfiguresClientKey: env.APPFIGURES_CLIENT_KEY?.trim() || null,
     appfiguresContextPath: str(env, 'SERVER_APPFIGURES_CONTEXT', defaultAppfiguresContextPath),
     beadsEnabled: bool(env, 'SERVER_BEADS_ENABLED', true),
-    anthropicApiKey: env.ANTHROPIC_API_KEY?.trim() || null,
     avatarsDir: str(env, 'SERVER_AVATARS_DIR', defaultAvatarsDir),
     workspacesBaseDir: str(env, 'SERVER_WORKSPACES_DIR', defaultWorkspacesBaseDir),
+    ollamaEnabled: bool(env, 'OLLAMA_ENABLED', false),
+    ollamaBaseUrl: str(env, 'OLLAMA_BASE_URL', 'http://localhost:11434'),
+    ollamaDefaultModel: str(env, 'OLLAMA_DEFAULT_MODEL', 'llama3.2'),
+    ollamaImageModels: (env.OLLAMA_IMAGE_MODELS?.trim() || 'x/z-image-turbo,x/flux2-klein')
+      .split(',').map(s => s.trim()).filter(Boolean),
   };
 }

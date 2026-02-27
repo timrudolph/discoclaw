@@ -37,6 +37,7 @@ struct NewConversationView: View {
 
             // ── Body ──────────────────────────────────────────────────────────
             ScrollView {
+              GlassEffectContainer {
                 VStack(alignment: .leading, spacing: 20) {
 
                     // Name
@@ -46,7 +47,7 @@ struct NewConversationView: View {
                             .textFieldStyle(.plain)
                             .focused($titleFocused)
                             .padding(12)
-                            .background(.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+                            .glassEffect(.regular, in: .rect(cornerRadius: 10))
                             .onSubmit { Task { await submit() } }
                     }
 
@@ -57,7 +58,7 @@ struct NewConversationView: View {
                             .font(.system(.body, design: .monospaced))
                             .textFieldStyle(.plain)
                             .padding(12)
-                            .background(.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+                            .glassEffect(.regular, in: .rect(cornerRadius: 10))
                             .onSubmit { Task { await submit() } }
                     }
 
@@ -77,6 +78,7 @@ struct NewConversationView: View {
                     }
                 }
                 .padding(20)
+              }
             }
 
             Divider()
@@ -98,7 +100,7 @@ struct NewConversationView: View {
                     }
                     .frame(minWidth: 80)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.glassProminent)
                 .keyboardShortcut(.defaultAction)
                 .disabled(isCreating)
             }
@@ -151,7 +153,7 @@ struct NewConversationView: View {
                     .frame(minHeight: 72)
                     .padding(6)
             }
-            .background(.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+            .glassEffect(.regular, in: .rect(cornerRadius: 10))
         }
     }
 

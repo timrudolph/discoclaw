@@ -35,6 +35,7 @@ extension AppDatabase {
                 t.column("seq", .integer).notNull()
                 t.column("createdAt", .datetime).notNull()
                 t.column("completedAt", .datetime)
+                t.column("sourceConversationId", .text)
             }
 
             try db.create(indexOn: "messages", columns: ["conversationId", "seq"])

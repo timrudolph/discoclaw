@@ -163,6 +163,8 @@ public struct SendMessageResponse: Decodable {
     public let clientId: String?
     public let status: String
     public let assistantMessageId: String
+    /// Set for @mention responses — identifies the bot's conversation for attribution.
+    public let sourceConversationId: String?
 }
 
 // ─── Cron jobs ────────────────────────────────────────────────────────────────

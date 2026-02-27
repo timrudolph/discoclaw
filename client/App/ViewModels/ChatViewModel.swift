@@ -98,7 +98,8 @@ final class ChatViewModel: ObservableObject {
                 error: nil,
                 seq: response.seq + 1,
                 createdAt: Date(),
-                completedAt: nil
+                completedAt: nil,
+                sourceConversationId: response.sourceConversationId
             )
             try? await repo.saveIfAbsent(placeholder)
         } catch {

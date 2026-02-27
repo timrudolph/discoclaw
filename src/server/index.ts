@@ -21,6 +21,9 @@ import { registerBeadsRoutes } from './beads.js';
 import { registerCronRoutes } from './crons.js';
 import { ServerCronScheduler } from './cron-scheduler.js';
 import { createClaudeCliRuntime } from '../runtime/claude-code-cli.js';
+import { createOllamaRuntime } from '../runtime/ollama-runtime.js';
+import { createRoutingRuntime } from '../runtime/routing-runtime.js';
+import type { RuntimeAdapter } from '../runtime/types.js';
 import type { DeviceRow, UserRow, MemoryItemRow } from './db.js';
 
 const PROTECTED_CONVERSATIONS: Record<string, string> = {
@@ -128,7 +131,7 @@ fs.mkdirSync(config.workspacesBaseDir, { recursive: true });
 
 // ─── Runtime ──────────────────────────────────────────────────────────────────
 
-const runtime = createClaudeCliRuntime({
+const claudeRuntime = createClaudeCliRuntime({
   claudeBin: config.claudeBin,
   dangerouslySkipPermissions: config.dangerouslySkipPermissions,
   outputFormat: config.outputFormat,
@@ -147,6 +150,27 @@ const runtime = createClaudeCliRuntime({
   multiTurnMaxProcesses: 5,
   streamStallTimeoutMs: 120_000,
 });
+
+let runtime: RuntimeAdapter = claudeRuntime;
+const ollamaModelNames = new Set<string>();
+
+if (config.ollamaEnabled) {
+  const ollamaRuntime = createOllamaRuntime({
+    baseUrl: config.ollamaBaseUrl,
+    defaultModel: config.ollamaDefaultModel,
+    imageModels: config.ollamaImageModels,
+  });
+  // Try to fetch available models (non-blocking, graceful failure)
+  try {
+    const resp = await fetch(`${config.ollamaBaseUrl}/api/tags`);
+    const data = (await resp.json()) as { models?: Array<{ name: string }> };
+    for (const m of data.models ?? []) ollamaModelNames.add(m.name);
+    log.info(`Ollama connected: ${ollamaModelNames.size} models available`);
+  } catch {
+    log.warn('Ollama not reachable at startup — will retry on model requests');
+  }
+  runtime = createRoutingRuntime(claudeRuntime, ollamaRuntime, ollamaModelNames);
+}
 
 // ─── WebSocket hub ────────────────────────────────────────────────────────────
 
@@ -302,7 +326,7 @@ app.get('/auth/avatar', { preHandler: authHook }, async (req, reply) => {
     const stat = await fs.promises.stat(filePath);
     reply.header('Content-Type', 'image/jpeg');
     reply.header('Content-Length', String(stat.size));
-    reply.header('Cache-Control', 'max-age=86400');
+    reply.header('Cache-Control', 'no-store');
     return reply.send(fs.createReadStream(filePath));
   } catch {
     return reply.status(404).send();
@@ -339,16 +363,44 @@ app.get<{ Params: { id: string } }>(
       .get(req.params.id, req.user.id) as { id: string } | undefined;
     if (!conv) return reply.notFound();
 
-    const filePath = path.join(config.avatarsDir, `conv-${conv.id}.jpg`);
-    try {
-      const stat = await fs.promises.stat(filePath);
-      reply.header('Content-Type', 'image/jpeg');
-      reply.header('Content-Length', String(stat.size));
-      reply.header('Cache-Control', 'max-age=86400');
-      return reply.send(fs.createReadStream(filePath));
-    } catch {
-      return reply.status(404).send();
+    const pngPath = path.join(config.avatarsDir, `conv-${conv.id}.png`);
+    const jpgPath = path.join(config.avatarsDir, `conv-${conv.id}.jpg`);
+    for (const [filePath, mime] of [[pngPath, 'image/png'], [jpgPath, 'image/jpeg']] as const) {
+      try {
+        const stat = await fs.promises.stat(filePath);
+        reply.header('Content-Type', mime);
+        reply.header('Content-Length', String(stat.size));
+        reply.header('Cache-Control', 'no-store');
+        return reply.send(fs.createReadStream(filePath));
+      } catch { /* try next */ }
     }
+    return reply.status(404).send();
+  },
+);
+
+// ─── Generated image serving ───────────────────────────────────────────────────
+
+app.get<{ Params: { id: string; imageId: string } }>(
+  '/conversations/:id/images/:imageId',
+  { preHandler: authHook },
+  async (req, reply) => {
+    const conv = db
+      .prepare('SELECT id FROM conversations WHERE id = ? AND user_id = ?')
+      .get(req.params.id, req.user.id) as { id: string } | undefined;
+    if (!conv) return reply.notFound();
+
+    const { imageId } = req.params;
+    for (const [ext, mime] of [['png', 'image/png'], ['jpg', 'image/jpeg']] as const) {
+      const p = path.join(config.avatarsDir, `gen-${imageId}.${ext}`);
+      try {
+        const stat = await fs.promises.stat(p);
+        reply.header('Content-Type', mime);
+        reply.header('Content-Length', String(stat.size));
+        reply.header('Cache-Control', 'public, max-age=86400');
+        return reply.send(fs.createReadStream(p));
+      } catch { /* try next */ }
+    }
+    return reply.status(404).send({ error: 'Image not found' });
   },
 );
 
@@ -471,16 +523,40 @@ app.delete<{ Params: { id: string; itemId: string } }>('/conversations/:id/memor
 
 // ─── Available models (Claude Code model aliases) ─────────────────────────────
 
-const AVAILABLE_MODELS = [
-  { id: 'opus',   label: 'Claude Opus',   description: 'Most capable' },
-  { id: 'sonnet', label: 'Claude Sonnet', description: 'Balanced' },
-  { id: 'haiku',  label: 'Claude Haiku',  description: 'Fast & efficient' },
-] as const;
+function formatSize(bytes: number): string {
+  if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(1)} GB`;
+  if (bytes >= 1e6) return `${(bytes / 1e6).toFixed(0)} MB`;
+  return `${bytes} B`;
+}
 
-app.get('/models', { preHandler: authHook }, async () => ({
-  models: AVAILABLE_MODELS,
-  default: config.runtimeModel,
-}));
+app.get('/models', { preHandler: authHook }, async () => {
+  const models: Array<{ id: string; label: string; description: string; runtime: string }> = [
+    { id: 'opus',   label: 'Claude Opus',   description: 'Most capable',      runtime: 'claude' },
+    { id: 'sonnet', label: 'Claude Sonnet', description: 'Balanced',          runtime: 'claude' },
+    { id: 'haiku',  label: 'Claude Haiku',  description: 'Fast & efficient',  runtime: 'claude' },
+  ];
+
+  if (config.ollamaEnabled) {
+    try {
+      const resp = await fetch(`${config.ollamaBaseUrl}/api/tags`);
+      const data = (await resp.json()) as { models?: Array<{ name: string; size: number }> };
+      for (const m of data.models ?? []) {
+        const isImage = config.ollamaImageModels.some((p) => m.name.startsWith(p));
+        models.push({
+          id: m.name,
+          label: m.name,
+          description: isImage ? 'Image generation (local)' : `Local LLM (${formatSize(m.size)})`,
+          runtime: 'ollama',
+        });
+      }
+      // Refresh routing runtime's model set
+      ollamaModelNames.clear();
+      for (const m of data.models ?? []) ollamaModelNames.add(m.name);
+    } catch { /* Ollama unreachable — just return Claude models */ }
+  }
+
+  return { models, default: config.runtimeModel };
+});
 
 // ─── Context modules ──────────────────────────────────────────────────────────
 

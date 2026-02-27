@@ -27,7 +27,7 @@ export type RuntimeCapability =
   | 'mcp'
   | 'multi_turn';
 
-export type RuntimeId = 'claude_code' | 'openai' | 'gemini' | 'other';
+export type RuntimeId = 'claude_code' | 'ollama' | 'openai' | 'other';
 
 export type RuntimeInvokeParams = {
   prompt: string;

@@ -99,6 +99,8 @@ struct ConversationListView: View {
         .onChange(of: searchText) { _, query in
             Task { await performMessageSearch(query: query) }
         }
+        .scrollEdgeEffectStyle(.soft, for: .top)
+        .scrollEdgeEffectStyle(.soft, for: .bottom)
         #if os(macOS)
         .listStyle(.sidebar)
         #else
@@ -111,56 +113,20 @@ struct ConversationListView: View {
         .navigationTitle("Chats")
         #endif
         .safeAreaInset(edge: .top) {
-            VStack(spacing: 0) {
-                    HStack(spacing: 8) {
-                        if beadsEnabled {
-                            Picker("", selection: $sidebarMode) {
-                                Text("Chats").tag(SidebarMode.chats)
-                                Text("Beads").tag(SidebarMode.beads)
-                            }
-                            .pickerStyle(.segmented)
-                        }
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                isSearchExpanded.toggle()
-                                if !isSearchExpanded { searchText = "" }
-                            }
-                        } label: {
-                            Image(systemName: "magnifyingglass")
-                                .font(.body)
-                                .foregroundStyle(isSearchExpanded ? .primary : .secondary)
-                        }
-                        .buttonStyle(.plain)
+            if beadsEnabled {
+                GlassEffectContainer {
+                    Picker("", selection: $sidebarMode) {
+                        Text("Chats").tag(SidebarMode.chats)
+                        Text("Beads").tag(SidebarMode.beads)
                     }
+                    .pickerStyle(.segmented)
                     .padding(.horizontal, 14)
                     .padding(.top, 8)
                     .padding(.bottom, 4)
-                    if isSearchExpanded {
-                        HStack(spacing: 6) {
-                            Image(systemName: "magnifyingglass")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                            TextField("Search", text: $searchText)
-                                .textFieldStyle(.plain)
-                            if !searchText.isEmpty {
-                                Button { searchText = "" } label: {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .foregroundStyle(.secondary)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(.quaternary, in: RoundedRectangle(cornerRadius: 7))
-                        .padding(.horizontal, 14)
-                        .padding(.bottom, 6)
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                    }
-                    Divider()
+                    .background(.clear)
+                    .glassEffect(.regular, in: .rect)
                 }
-                .background(.bar)
-                .animation(.easeInOut(duration: 0.2), value: isSearchExpanded)
+            }
         }
         .overlay {
             if viewModel.conversations.isEmpty {
@@ -225,7 +191,8 @@ struct ConversationListView: View {
                     conversation: conversation,
                     lastMessage: viewModel.lastMessages[conversation.id],
                     api: api,
-                    isSelected: isSelected
+                    isSelected: isSelected,
+                    avatarVersion: syncEngine.avatarRefreshToken
                 )
             }
             .swipeActions(edge: .trailing, allowsFullSwipe: !conversation.isProtected) {
@@ -267,7 +234,7 @@ struct ConversationListView: View {
     private func selectionBackground(isSelected: Bool) -> some View {
         if isSelected {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Color.accentColor)
+                .fill(Color.accentColor.opacity(0.8))
         } else {
             Color.clear
         }
@@ -325,7 +292,6 @@ struct ConversationListView: View {
         VStack(spacing: 0) {
             // Connection status strip — slides in when the WebSocket is down.
             if !syncEngine.isConnected {
-                Divider()
                 HStack(spacing: 5) {
                     if syncEngine.isSyncing {
                         ProgressView().scaleEffect(0.6).frame(width: 12, height: 12)
@@ -342,69 +308,133 @@ struct ConversationListView: View {
                 .background(.orange.opacity(0.08))
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
-            Divider()
-            HStack(spacing: 4) {
-                Button {
-                    onNewChat()
-                } label: {
-                    Image(systemName: "square.and.pencil")
-                        .font(.body)
-                        .foregroundStyle(.secondary)
+            GlassEffectContainer {
+              VStack(spacing: 0) {
+                if isSearchExpanded {
+                    HStack(spacing: 6) {
+                        Image(systemName: "magnifyingglass")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        TextField("Search", text: $searchText)
+                            .textFieldStyle(.plain)
+                        if !searchText.isEmpty {
+                            Button { searchText = "" } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(.secondary)
+                                    .frame(minWidth: 44, minHeight: 44)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .glassEffect(.regular, in: .rect(cornerRadius: 10))
+                    .padding(.horizontal, 14)
+                    .padding(.top, 8)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
-                .buttonStyle(.plain)
-                .keyboardShortcut("n", modifiers: .command)
+                HStack(spacing: 8) {
+                    Button {
+                        onNewChat()
+                    } label: {
+                        Image(systemName: "square.and.pencil")
+                            #if os(iOS)
+                            .font(.title)
+                            #else
+                            .font(.body)
+                            #endif
+                            .foregroundStyle(.secondary)
+                            .frame(width: 48, height: 48)
+                    }
+                    .buttonStyle(.plain)
+                    .glassEffect(.regular.interactive(), in: .circle)
+                    .keyboardShortcut("n", modifiers: .command)
 
-                Spacer()
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            isSearchExpanded.toggle()
+                            if !isSearchExpanded { searchText = "" }
+                        }
+                    } label: {
+                        Image(systemName: "magnifyingglass")
+                            #if os(iOS)
+                            .font(.title)
+                            #else
+                            .font(.body)
+                            #endif
+                            .foregroundStyle(isSearchExpanded ? .primary : .secondary)
+                            .frame(width: 48, height: 48)
+                    }
+                    .buttonStyle(.plain)
+                    .glassEffect(.regular.interactive(), in: .circle)
 
-                Button {
-                    showingMemory = true
-                } label: {
-                    Image(systemName: "brain")
-                        .font(.body)
-                        .foregroundStyle(.secondary)
+                    Spacer()
+
+                    Button {
+                        showingMemory = true
+                    } label: {
+                        Image(systemName: "brain")
+                            #if os(iOS)
+                            .font(.title)
+                            #else
+                            .font(.body)
+                            #endif
+                            .foregroundStyle(.secondary)
+                            .frame(width: 48, height: 48)
+                    }
+                    .buttonStyle(.plain)
+                    .glassEffect(.regular.interactive(), in: .circle)
+                    .help("Global Memory")
+
+                    Menu {
+                        Toggle(isOn: $viewModel.showArchived) {
+                            Label("Show Archived", systemImage: "archivebox")
+                        }
+                        Divider()
+                        Picker("Appearance", selection: $appearance) {
+                            Text("Auto").tag("auto")
+                            Text("Light").tag("light")
+                            Text("Dark").tag("dark")
+                        }
+                        Divider()
+                        Button { showingWorkspace = true } label: {
+                            Label("Workspace Files", systemImage: "doc.badge.gearshape")
+                        }
+                        Button { showingCrons = true } label: {
+                            Label("Scheduled Prompts", systemImage: "clock.badge.checkmark")
+                        }
+                        Button { showingDevices = true } label: {
+                            Label("Manage Devices", systemImage: "laptopcomputer.and.iphone")
+                        }
+                        Button { showingProfile = true } label: {
+                            Label("My Profile", systemImage: "person.crop.circle")
+                        }
+                        Divider()
+                        Button(role: .destructive, action: onSignOut) {
+                            Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                            #if os(iOS)
+                            .font(.title)
+                            #else
+                            .font(.body)
+                            #endif
+                            .foregroundStyle(.secondary)
+                            .frame(width: 48, height: 48)
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                    .glassEffect(.regular.interactive(), in: .circle)
                 }
-                .buttonStyle(.plain)
-                .help("Global Memory")
-
-                Menu {
-                    Toggle(isOn: $viewModel.showArchived) {
-                        Label("Show Archived", systemImage: "archivebox")
-                    }
-                    Divider()
-                    Picker("Appearance", selection: $appearance) {
-                        Text("Auto").tag("auto")
-                        Text("Light").tag("light")
-                        Text("Dark").tag("dark")
-                    }
-                    Divider()
-                    Button { showingWorkspace = true } label: {
-                        Label("Workspace Files", systemImage: "doc.badge.gearshape")
-                    }
-                    Button { showingCrons = true } label: {
-                        Label("Scheduled Prompts", systemImage: "clock.badge.checkmark")
-                    }
-                    Button { showingDevices = true } label: {
-                        Label("Manage Devices", systemImage: "laptopcomputer.and.iphone")
-                    }
-                    Button { showingProfile = true } label: {
-                        Label("My Profile", systemImage: "person.crop.circle")
-                    }
-                    Divider()
-                    Button(role: .destructive, action: onSignOut) {
-                        Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
-                    }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                        .font(.body)
-                        .foregroundStyle(.secondary)
-                }
-                .menuStyle(.borderlessButton)
-                .fixedSize()
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+              }
+              .animation(.easeInOut(duration: 0.2), value: isSearchExpanded)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 9)
         }
-        .background(.bar)
+        .background(.clear)
         .animation(.easeInOut(duration: 0.2), value: syncEngine.isConnected)
     }
 
@@ -475,6 +505,7 @@ private struct ConversationRow: View {
     let lastMessage: Message?
     let api: APIClient
     var isSelected: Bool = false
+    var avatarVersion: Int = 0
 
     @State private var avatarImage: Image? = nil
 
@@ -510,7 +541,7 @@ private struct ConversationRow: View {
                 }
             }
         }
-        .task(id: conversation.id) {
+        .task(id: "\(conversation.id)-\(avatarVersion)") {
             // Only fetch for persona conversations — general/tasks/journal use icon fallback.
             guard conversation.assistantName != nil else { return }
             if let data = try? await api.fetchAssistantAvatar(conversationId: conversation.id),
@@ -530,12 +561,12 @@ private struct ConversationRow: View {
         ZStack {
             Circle()
                 .fill(avatarBackground)
-                .frame(width: 42, height: 42)
+                .frame(width: 44, height: 44)
             if let img = avatarImage {
                 img
                     .resizable()
                     .scaledToFill()
-                    .frame(width: 42, height: 42)
+                    .frame(width: 44, height: 44)
                     .clipShape(Circle())
             } else if conversation.isArchived {
                 Image(systemName: "archivebox")
@@ -551,7 +582,7 @@ private struct ConversationRow: View {
                     .foregroundStyle(.white)
             }
         }
-        .frame(width: 42, height: 42)
+        .frame(width: 44, height: 44)
         .opacity(conversation.isArchived ? 0.55 : 1)
     }
 
@@ -678,7 +709,7 @@ private struct ProfileView: View {
                             .foregroundStyle(.green).font(.subheadline)
                     } else {
                         Button("Save") { Task { await save() } }
-                            .buttonStyle(.borderedProminent)
+                            .buttonStyle(.glassProminent)
                     }
                 }
             }

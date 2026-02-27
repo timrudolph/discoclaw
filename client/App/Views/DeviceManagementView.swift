@@ -96,6 +96,7 @@ private struct DeviceRow: View {
     }
 
     var body: some View {
+        GlassEffectContainer {
         HStack(spacing: 12) {
             Image(systemName: platformIcon)
                 .font(.title2)
@@ -110,7 +111,7 @@ private struct DeviceRow: View {
                         Text("This device")
                             .font(.caption)
                             .padding(.horizontal, 6).padding(.vertical, 2)
-                            .background(.blue.opacity(0.12), in: Capsule())
+                            .glassEffect(.regular.tint(.blue), in: .capsule)
                             .foregroundStyle(.blue)
                     }
                 }
@@ -127,10 +128,13 @@ private struct DeviceRow: View {
                 } else {
                     Button("Revoke", role: .destructive, action: onRevoke)
                         .buttonStyle(.borderless)
-                        .font(.caption)
+                        .font(.subheadline)
                         .foregroundStyle(.red)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
                 }
             }
+        }
         }
         .padding(.vertical, 4)
     }

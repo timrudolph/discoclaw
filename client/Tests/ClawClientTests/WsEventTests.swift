@@ -9,13 +9,14 @@ final class WsEventTests: XCTestCase {
         let json = """
         {"type":"message.delta","messageId":"m1","conversationId":"c1","delta":"Hello","seq":7}
         """
-        guard case .messageDelta(let mid, let cid, let delta, let seq) = WsEvent.parse(json) else {
+        guard case .messageDelta(let mid, let cid, let delta, let seq, let srcConvId) = WsEvent.parse(json) else {
             XCTFail("expected messageDelta"); return
         }
         XCTAssertEqual(mid, "m1")
         XCTAssertEqual(cid, "c1")
         XCTAssertEqual(delta, "Hello")
         XCTAssertEqual(seq, 7)
+        XCTAssertNil(srcConvId)
     }
 
     // MARK: - message.complete
@@ -24,13 +25,14 @@ final class WsEventTests: XCTestCase {
         let json = """
         {"type":"message.complete","messageId":"m2","conversationId":"c1","content":"Full text","seq":10}
         """
-        guard case .messageComplete(let mid, let cid, let content, let seq) = WsEvent.parse(json) else {
+        guard case .messageComplete(let mid, let cid, let content, let seq, let srcConvId) = WsEvent.parse(json) else {
             XCTFail("expected messageComplete"); return
         }
         XCTAssertEqual(mid, "m2")
         XCTAssertEqual(cid, "c1")
         XCTAssertEqual(content, "Full text")
         XCTAssertEqual(seq, 10)
+        XCTAssertNil(srcConvId)
     }
 
     // MARK: - message.error

@@ -66,6 +66,7 @@ export function registerSyncRoutes(app: FastifyInstance, db: Db): void {
         seq: m.seq,
         createdAt: m.created_at,
         completedAt: m.completed_at ?? undefined,
+        sourceConversationId: m.source_conversation_id ?? undefined,
       })),
       cursor,
     };

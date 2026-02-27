@@ -189,7 +189,7 @@ struct WorkspaceFileEditorView: View {
                             Text("Save")
                         }
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.glassProminent)
                     .disabled(!isDirty || isSaving)
                 }
             }

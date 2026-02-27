@@ -171,6 +171,7 @@ export type InvokeOptions = {
   responseConversationId?: string;
   responseAssistantMessageId?: string;
   responseAssistantSeq?: number;
+  responseSourceConversationId?: string;
 };
 
 /**
@@ -300,6 +301,7 @@ export async function invokeRuntime(opts: InvokeOptions): Promise<string> {
     assistantId, assistantSeq, prompt, sessionId,
     cwd, addDirs, appendSystemPrompt,
     responseConversationId: opts.responseConversationId,
+    responseSourceConversationId: opts.responseSourceConversationId,
   });
 
   return assistantId;
@@ -320,6 +322,7 @@ type StreamParams = {
   appendSystemPrompt?: string;
   // Cross-conv routing: stream into this conversation instead of conversation.id
   responseConversationId?: string;
+  responseSourceConversationId?: string;
 };
 
 /** Returns true if the error is a Claude CLI session-ID conflict. */
@@ -376,8 +379,32 @@ async function doStream(params: StreamParams, isRetry: boolean): Promise<void> {
             conversationId: targetConvId,
             delta: event.text,
             seq: assistantSeq,
+            ...(params.responseSourceConversationId && { sourceConversationId: params.responseSourceConversationId }),
           });
           break;
+
+        case 'image_data': {
+          // Save generated image to disk
+          const imageId = crypto.randomUUID();
+          const ext = event.image.mediaType === 'image/jpeg' ? 'jpg' : 'png';
+          const filename = `gen-${imageId}.${ext}`;
+          const filepath = path.join(config.avatarsDir, filename);
+          await fs.promises.writeFile(filepath, Buffer.from(event.image.base64, 'base64'));
+          // Append markdown image reference to message content
+          const imageUrl = `/conversations/${targetConvId}/images/${imageId}`;
+          const imageMarkdown = `\n![generated image](${imageUrl})\n`;
+          fullContent += imageMarkdown;
+          db.prepare('UPDATE messages SET content = ? WHERE id = ?').run(fullContent, assistantId);
+          hub.broadcast(userId, {
+            type: 'message.delta',
+            messageId: assistantId,
+            conversationId: targetConvId,
+            delta: imageMarkdown,
+            seq: assistantSeq,
+            ...(params.responseSourceConversationId && { sourceConversationId: params.responseSourceConversationId }),
+          });
+          break;
+        }
 
         case 'tool_start':
           hub.broadcast(userId, {
@@ -414,6 +441,7 @@ async function doStream(params: StreamParams, isRetry: boolean): Promise<void> {
             conversationId: targetConvId,
             content: fullContent,
             seq: assistantSeq,
+            ...(params.responseSourceConversationId && { sourceConversationId: params.responseSourceConversationId }),
           });
 
           // Cross-conv: mirror the final response into the shadow conv so the
