@@ -243,13 +243,20 @@ struct AppRootView: View {
             .navigationDestination(for: PhoneNav.self) { nav in
                 switch nav.dest {
                 case .chat:
+                    // Pass the best available conversation: from the live observer if this
+                    // is the selected id, otherwise fall back to a synchronous fetch so the
+                    // title is correct immediately on push.
+                    let initialConv = (nav.id == selectedConversationId)
+                        ? selectedConversation
+                        : container.conversationRepo.fetchSync(id: nav.id)
                     ChatView(
                         conversationId: nav.id,
-                        conversation: nav.id == selectedConversationId ? selectedConversation : nil,
+                        conversation: initialConv,
                         messageRepo: container.messageRepo,
                         api: container.api,
                         conversationRepo: container.conversationRepo
                     )
+                    .onAppear { selectedConversationId = nav.id }
                 case .bead:
                     if beadsEnabled {
                         BeadDetailView(beadId: nav.id, api: container.api) { updated in

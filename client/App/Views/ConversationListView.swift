@@ -52,7 +52,7 @@ struct ConversationListView: View {
     }
 
     var body: some View {
-        List(selection: $selectedId) {
+        List {
             // Protected (built-in) conversations — General, Tasks, Journal, etc.
             if !protectedConversations.isEmpty {
                 Section {
@@ -96,12 +96,6 @@ struct ConversationListView: View {
                 }
             }
         }
-        .contextMenu(forSelectionType: String.self) { ids in
-            if let id = ids.first,
-               let conv = viewModel.conversations.first(where: { $0.id == id }) {
-                contextMenuItems(for: conv)
-            }
-        }
         .onChange(of: searchText) { _, query in
             Task { await performMessageSearch(query: query) }
         }
@@ -112,7 +106,7 @@ struct ConversationListView: View {
         #endif
         #if os(iOS)
         .navigationTitle(UIDevice.current.userInterfaceIdiom == .phone ? "" : "Chats")
-        .navigationBarHidden(UIDevice.current.userInterfaceIdiom == .phone)
+        .toolbar(UIDevice.current.userInterfaceIdiom == .phone ? .hidden : .automatic, for: .navigationBar)
         #else
         .navigationTitle("Chats")
         #endif
@@ -223,12 +217,15 @@ struct ConversationListView: View {
 
     @ViewBuilder
     private func conversationRow(for conversation: Conversation) -> some View {
+        let isSelected = selectedId == conversation.id
         #if os(iOS)
         if UIDevice.current.userInterfaceIdiom == .phone {
             NavigationLink(value: PhoneNav(dest: .chat, id: conversation.id)) {
                 ConversationRow(
                     conversation: conversation,
-                    lastMessage: viewModel.lastMessages[conversation.id]
+                    lastMessage: viewModel.lastMessages[conversation.id],
+                    api: api,
+                    isSelected: isSelected
                 )
             }
             .swipeActions(edge: .trailing, allowsFullSwipe: !conversation.isProtected) {
@@ -237,9 +234,14 @@ struct ConversationListView: View {
         } else {
             ConversationRow(
                 conversation: conversation,
-                lastMessage: viewModel.lastMessages[conversation.id]
+                lastMessage: viewModel.lastMessages[conversation.id],
+                api: api,
+                isSelected: isSelected
             )
-            .tag(conversation.id)
+            .contentShape(Rectangle())
+            .onTapGesture { selectedId = conversation.id }
+            .contextMenu { contextMenuItems(for: conversation) }
+            .listRowBackground(selectionBackground(isSelected: isSelected))
             .swipeActions(edge: .trailing, allowsFullSwipe: !conversation.isProtected) {
                 conversationSwipeActions(for: conversation)
             }
@@ -247,13 +249,28 @@ struct ConversationListView: View {
         #else
         ConversationRow(
             conversation: conversation,
-            lastMessage: viewModel.lastMessages[conversation.id]
+            lastMessage: viewModel.lastMessages[conversation.id],
+            api: api,
+            isSelected: isSelected
         )
-        .tag(conversation.id)
+        .contentShape(Rectangle())
+        .onTapGesture { selectedId = conversation.id }
+        .contextMenu { contextMenuItems(for: conversation) }
+        .listRowBackground(selectionBackground(isSelected: isSelected))
         .swipeActions(edge: .trailing, allowsFullSwipe: !conversation.isProtected) {
             conversationSwipeActions(for: conversation)
         }
         #endif
+    }
+
+    @ViewBuilder
+    private func selectionBackground(isSelected: Bool) -> some View {
+        if isSelected {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.accentColor)
+        } else {
+            Color.clear
+        }
     }
 
     // MARK: - Swipe actions
@@ -456,14 +473,126 @@ struct ConversationListView: View {
 private struct ConversationRow: View {
     let conversation: Conversation
     let lastMessage: Message?
+    let api: APIClient
+    var isSelected: Bool = false
 
-    /// First non-empty line of the message, with common markdown symbols stripped.
+    @State private var avatarImage: Image? = nil
+
+    // Foreground colors flip to white when the row is selected (accent bg).
+    private var titleColor: Color {
+        if isSelected { return .white }
+        return conversation.isArchived ? .secondary : .primary
+    }
+    private var previewColor: Color { isSelected ? .white.opacity(0.82) : .secondary }
+    private var timeColor: Color    { isSelected ? .white.opacity(0.65) : .secondary.opacity(0.6) }
+
+    var body: some View {
+        HStack(spacing: 11) {
+            avatarCircle
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text(conversation.title ?? "New Conversation")
+                        .font(.headline)
+                        .lineLimit(1)
+                        .foregroundStyle(titleColor)
+                    Spacer(minLength: 4)
+                    Text(formattedDate(conversation.updatedAt))
+                        .font(.caption)
+                        .foregroundStyle(timeColor)
+                        .lineLimit(1)
+                        .fixedSize()
+                }
+                if let preview = previewText {
+                    Text(preview)
+                        .font(.subheadline)
+                        .foregroundStyle(previewColor)
+                        .lineLimit(1)
+                }
+            }
+        }
+        .task(id: conversation.id) {
+            // Only fetch for persona conversations — general/tasks/journal use icon fallback.
+            guard conversation.assistantName != nil else { return }
+            if let data = try? await api.fetchAssistantAvatar(conversationId: conversation.id),
+               let img = imageFromData(data) {
+                avatarImage = img
+            }
+        }
+        #if os(macOS)
+        .padding(.vertical, 3)
+        #else
+        .padding(.vertical, 4)
+        #endif
+    }
+
+    @ViewBuilder
+    private var avatarCircle: some View {
+        ZStack {
+            Circle()
+                .fill(avatarBackground)
+                .frame(width: 42, height: 42)
+            if let img = avatarImage {
+                img
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 42, height: 42)
+                    .clipShape(Circle())
+            } else if conversation.isArchived {
+                Image(systemName: "archivebox")
+                    .font(.body)
+                    .foregroundStyle(.white.opacity(0.8))
+            } else if let icon = conversation.kindIcon, conversation.assistantName == nil {
+                Image(systemName: icon)
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(.white)
+            } else {
+                Text(monogram)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white)
+            }
+        }
+        .frame(width: 42, height: 42)
+        .opacity(conversation.isArchived ? 0.55 : 1)
+    }
+
+    private var monogram: String {
+        let name = conversation.assistantName ?? conversation.title ?? "?"
+        return String(name.prefix(1)).uppercased()
+    }
+
+    private var avatarBackground: Color {
+        if conversation.isArchived { return .secondary.opacity(0.6) }
+        if let accent = conversation.accentSwiftUIColor { return accent }
+        // Deterministic hue from the name so the same conversation always gets the same color.
+        let seed = conversation.assistantName ?? conversation.title ?? conversation.id
+        let hue = Double(abs(seed.hashValue) % 360) / 360.0
+        return Color(hue: hue, saturation: 0.45, brightness: 0.62)
+    }
+
+    /// Apple Messages–style date: time today, "Yesterday", weekday this week, "Feb 20" this year, "1/15/24" older.
+    private func formattedDate(_ date: Date) -> String {
+        let cal = Calendar.current
+        if cal.isDateInToday(date) {
+            return date.formatted(date: .omitted, time: .shortened)
+        }
+        if cal.isDateInYesterday(date) {
+            return "Yesterday"
+        }
+        if let daysAgo = cal.dateComponents([.day], from: date, to: .now).day, daysAgo < 7 {
+            return date.formatted(.dateTime.weekday(.wide))
+        }
+        if cal.isDate(date, equalTo: .now, toGranularity: .year) {
+            return date.formatted(.dateTime.month(.abbreviated).day())
+        }
+        return date.formatted(.dateTime.month(.defaultDigits).day().year(.twoDigits))
+    }
+
+    /// First non-empty line of the last message with markdown syntax stripped.
     private var previewText: String? {
         guard let content = lastMessage?.content, !content.isEmpty else { return nil }
         let firstLine = content
             .components(separatedBy: "\n")
             .first(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }) ?? ""
-        // Strip leading markdown: headers (#), bold (**), italic (*/_), inline code (`)
         var s = firstLine
         s = s.replacingOccurrences(of: #"^#+\s*"#, with: "", options: .regularExpression)
         s = s.replacingOccurrences(of: #"\*{1,2}([^*]*)\*{1,2}"#, with: "$1", options: .regularExpression)
@@ -473,59 +602,13 @@ private struct ConversationRow: View {
         return s.isEmpty ? nil : s
     }
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 4) {
-                if conversation.isArchived {
-                    Image(systemName: "archivebox")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                } else if let accent = conversation.accentSwiftUIColor {
-                    Circle()
-                        .fill(accent)
-                        .frame(width: 7, height: 7)
-                } else if let icon = conversation.kindIcon {
-                    Image(systemName: icon)
-                        .font(.caption)
-                        .foregroundStyle(conversation.isProtected ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
-                }
-                Text(conversation.title ?? "New Conversation")
-                    .font(.headline)
-                    .lineLimit(1)
-                    .foregroundStyle(conversation.isArchived ? .secondary : .primary)
-            }
-            if let preview = previewText {
-                Text(preview)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-            }
-            if lastMessage != nil {
-                HStack(spacing: 4) {
-                    Text(conversation.updatedAt, style: .relative)
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                    if let model = conversation.modelOverride {
-                        Text(model)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 1)
-                            .background(.secondary.opacity(0.15), in: Capsule())
-                    }
-                    if let name = conversation.assistantName, !name.isEmpty {
-                        Text(name)
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                            .lineLimit(1)
-                    }
-                }
-            }
-        }
-        #if os(macOS)
-        .padding(.vertical, 2)
+    private func imageFromData(_ data: Data) -> Image? {
+        #if os(iOS)
+        guard let ui = UIImage(data: data) else { return nil }
+        return Image(uiImage: ui)
         #else
-        .padding(.vertical, 6)
+        guard let ns = NSImage(data: data) else { return nil }
+        return Image(nsImage: ns)
         #endif
     }
 }

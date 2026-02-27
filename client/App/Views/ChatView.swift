@@ -25,6 +25,8 @@ struct ChatView: View {
     @State private var userImage: Image? = nil
     @State private var assistantImage: Image? = nil
     @State private var userName: String = ""
+    /// Avatars for source conversations in @mention responses, keyed by conversation ID.
+    @State private var sourceConvImages: [String: Image] = [:]
 
     private var draftKey: String { "draft.\(conversationId)" }
 
@@ -120,6 +122,10 @@ struct ChatView: View {
         }
         .task(id: conversationId) {
             await loadAvatars()
+            await fetchSourceConvAvatars(for: viewModel.messages)
+        }
+        .onChange(of: viewModel.messages) { _, messages in
+            Task { await fetchSourceConvAvatars(for: messages) }
         }
         .task(id: syncEngine.avatarRefreshToken) {
             guard syncEngine.avatarRefreshToken > 0 else { return }
@@ -162,6 +168,18 @@ struct ChatView: View {
         }
         if let data = userData { userImage = imageFromData(data) }
         if let data = assistantData { assistantImage = imageFromData(data) }
+    }
+
+    /// Fetches avatars for any @mention source conversations not yet in the cache.
+    private func fetchSourceConvAvatars(for messages: [Message]) async {
+        let newIds = Set(messages.compactMap(\.sourceConversationId))
+            .subtracting(sourceConvImages.keys)
+        for id in newIds {
+            if let data = try? await api.fetchAssistantAvatar(conversationId: id),
+               let img = imageFromData(data) {
+                sourceConvImages[id] = img
+            }
+        }
     }
 
     private func imageFromData(_ data: Data) -> Image? {
@@ -222,7 +240,8 @@ struct ChatView: View {
                         let messages = viewModel.messages
                         ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
                             let prevDate = index > 0 ? messages[index - 1].createdAt : nil
-                            if prevDate == nil || !Calendar.current.isDate(message.createdAt, inSameDayAs: prevDate!) {
+                            let dayBoundary = prevDate == nil || !Calendar.current.isDate(message.createdAt, inSameDayAs: prevDate!)
+                            if dayBoundary {
                                 DateSeparatorView(date: message.createdAt)
                                     .padding(.horizontal)
                             }
@@ -232,10 +251,19 @@ struct ChatView: View {
                             let bubbleAuthorName: String? = message.role == .user
                                 ? (userName.isEmpty ? nil : userName)
                                 : (sourceConv?.assistantName ?? assistantName)
-                            let bubbleImage: Image? = message.role == .user ? userImage : assistantImage
+                            let bubbleImage: Image? = message.role == .user
+                                ? userImage
+                                : (message.sourceConversationId != nil
+                                    ? message.sourceConversationId.flatMap { sourceConvImages[$0] }
+                                    : assistantImage)
                             let bubbleAccent: Color? = message.role == .user
                                 ? nil
                                 : (sourceConv?.accentSwiftUIColor ?? conversation?.accentSwiftUIColor)
+                            // Group with previous if same role, same source conv, no day boundary.
+                            let prevMsg = index > 0 ? messages[index - 1] : nil
+                            let isGrouped = !dayBoundary
+                                && prevMsg?.role == message.role
+                                && prevMsg?.sourceConversationId == message.sourceConversationId
                             MessageBubbleView(
                                 message: message,
                                 toolLabel: syncEngine.activeTools[message.id],
@@ -246,7 +274,8 @@ struct ChatView: View {
                                     ? { Task { await viewModel.retry(message: message) } }
                                     : nil,
                                 api: api,
-                                conversationId: conversationId
+                                conversationId: conversationId,
+                                isGrouped: isGrouped
                             )
                             .padding(.horizontal)
                             .id(message.id)

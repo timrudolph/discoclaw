@@ -18,6 +18,8 @@ struct MessageBubbleView: View {
     var api: APIClient? = nil
     /// If set, "Save to Memory" saves to this conversation's chat memory.
     var conversationId: String? = nil
+    /// When true, avatar and author name are hidden (consecutive same-sender grouping).
+    var isGrouped: Bool = false
 
     @State private var showTimestamp = false
     @State private var isSavingMemory = false
@@ -30,15 +32,18 @@ struct MessageBubbleView: View {
     var body: some View {
         HStack(alignment: .top, spacing: 0) {
             if isUser {
-                Spacer(minLength: 52)
+                Spacer(minLength: 60)
+            } else if isGrouped {
+                // Reserve the avatar column width so bubbles stay aligned
+                Color.clear.frame(width: 44 + 8)
             } else {
                 avatarCircle
                 Spacer().frame(width: 8)
             }
 
             VStack(alignment: isUser ? .trailing : .leading, spacing: 4) {
-                // Author name label
-                if let name = authorName {
+                // Author name label — hidden for grouped consecutive messages
+                if let name = authorName, !isGrouped {
                     Text(name)
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(.secondary)
@@ -109,7 +114,7 @@ struct MessageBubbleView: View {
                 Spacer().frame(width: 8)
                 avatarCircle
             } else {
-                Spacer(minLength: 52)
+                Spacer(minLength: 60)
             }
         }
         .contentShape(Rectangle())
@@ -127,20 +132,20 @@ struct MessageBubbleView: View {
         ZStack {
             Circle()
                 .fill(avatarBackground)
-                .frame(width: 36, height: 36)
+                .frame(width: 44, height: 44)
             if let image = authorImage {
                 image
                     .resizable()
                     .scaledToFill()
-                    .frame(width: 36, height: 36)
+                    .frame(width: 44, height: 44)
                     .clipShape(Circle())
             } else {
                 Text(monogram)
-                    .font(.caption.weight(.semibold))
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.white)
             }
         }
-        .frame(width: 36, height: 36)
+        .frame(width: 44, height: 44)
     }
 
     private var monogram: String {
