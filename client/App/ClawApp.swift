@@ -62,7 +62,7 @@ struct AppRootView: View {
     @State private var selectedBead: Bead?
 
     @State private var showingNewConversation = false
-    @State private var beadsEnabled = true
+    @State private var beadsEnabled = false
 
     @AppStorage("appearance") private var appearance = "auto"
 
@@ -178,7 +178,7 @@ struct AppRootView: View {
         .task {
             await container.syncEngine.start()
             if let h = try? await container.api.health() {
-                beadsEnabled = h.beadsEnabled ?? true
+                beadsEnabled = h.beadsEnabled ?? false
                 if !beadsEnabled && sidebarMode == .beads { sidebarMode = .chats }
             }
             #if os(macOS)
@@ -279,7 +279,7 @@ struct AppRootView: View {
         .task {
             await container.syncEngine.start()
             if let h = try? await container.api.health() {
-                beadsEnabled = h.beadsEnabled ?? true
+                beadsEnabled = h.beadsEnabled ?? false
                 if !beadsEnabled && sidebarMode == .beads { sidebarMode = .chats }
             }
         }
