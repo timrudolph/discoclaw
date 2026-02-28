@@ -116,7 +116,7 @@ export function parseServerConfig(env: NodeJS.ProcessEnv): ServerConfig {
     outputFormat: (outputFormatRaw as 'text' | 'stream-json') ?? 'stream-json',
     runtimeModel: str(env, 'RUNTIME_MODEL', 'opus'),
     runtimeTools,
-    runtimeTimeoutMs: num(env, 'RUNTIME_TIMEOUT_MS', 10 * 60_000),
+    runtimeTimeoutMs: num(env, 'RUNTIME_TIMEOUT_MS', 30 * 60_000),
     appfiguresToken: env.APPFIGURES_TOKEN?.trim() || null,
     appfiguresClientKey: env.APPFIGURES_CLIENT_KEY?.trim() || null,
     appfiguresContextPath: str(env, 'SERVER_APPFIGURES_CONTEXT', defaultAppfiguresContextPath),
